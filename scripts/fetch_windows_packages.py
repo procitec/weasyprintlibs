@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import io
 import os
 import shutil
 import subprocess
@@ -61,31 +60,41 @@ def pkginfo_from_archive(path: Path) -> dict[str, str]:
                     extracted = archive.extractfile(member)
                     if extracted is None:
                         raise RuntimeError(
-                            f"Could not extract .PKGINFO from {path}"
+                            f"Could not extract .PKGINFO from archive: {path}"
                         )
+
+                    content = extracted.read().decode(
+                        "utf-8",
+                        errors="strict",
+                    )
 
                     result: dict[str, str] = {}
 
-                    with io.TextIOWrapper(
-                        extracted,
-                        encoding="utf-8",
-                    ) as text_stream:
-                        for raw_line in text_stream:
-                            line = raw_line.strip()
+                    for raw_line in content.splitlines():
+                        line = raw_line.strip()
 
-                            if not line or line.startswith("#"):
-                                continue
+                        if not line or line.startswith("#"):
+                            continue
 
-                            key, separator, value = line.partition(" = ")
-                            if not separator:
-                                continue
+                        key, separator, value = line.partition(" = ")
+                        if not separator:
+                            continue
 
-                            result.setdefault(key, value)
+                        # .PKGINFO kann Schlüssel mehrfach enthalten,
+                        # zum Beispiel depend. Für pkgname/pkgver genügt
+                        # jeweils der erste Wert.
+                        result.setdefault(key, value)
+
+                    if not result:
+                        raise RuntimeError(
+                            f".PKGINFO is empty or invalid in archive: {path}"
+                        )
 
                     return result
 
-    raise RuntimeError(f"Archive does not contain .PKGINFO: {path}")
-
+    raise RuntimeError(
+        f"Archive does not contain .PKGINFO: {path}"
+    )
 def toml_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
