@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=80", "wheel>=0.45"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "procitec-weasyprint-libs"
+version = "26.1"
+description = "Bundled native libraries for a reproducible WeasyPrint runtime"
+requires-python = ">=3.13"
+license = "MIT"
+dependencies = []
+
+[dependency-groups]
+native-build = [
+    "meson>=1.8,<2",
+    "ninja>=1.12",
+    "zstandard>=0.23",
+]
+
+[tool.uv]
+package = false
+default-groups = ["native-build"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+weasyprintlibs_native = ["lib/**", "bin/**", "etc/**", "share/**"]

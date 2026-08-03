@@ -1,0 +1,141 @@
+name: Update lockfiles
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_changes:
+        description: Commit and push changed lockfiles to the selected branch
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-lockfiles-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-lockfiles:
+    name: Python and Linux source locks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+
+      - name: Update uv.lock
+        shell: bash
+        run: uv lock --upgrade
+
+      - name: Generate Linux source lock
+        shell: bash
+        run: uv run python scripts/fetch_sources.py --refresh --write-lock
+
+      - name: Prepare lockfile artifact
+        shell: bash
+        run: |
+          mkdir -p _lock_artifacts/config
+          cp uv.lock _lock_artifacts/uv.lock
+          cp config/source-lock.generated.toml _lock_artifacts/config/source-lock.generated.toml
+
+      - name: Upload Linux lockfiles
+        uses: actions/upload-artifact@v7
+        with:
+          name: updated-linux-lockfiles
+          path: _lock_artifacts/
+          if-no-files-found: error
+
+  windows-lockfile:
+    name: Windows MSYS2 package lock
+    runs-on: windows-2025
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+
+      - name: Resolve packages and write Windows lock
+        shell: msys2 {0}
+        run: uv run python scripts/fetch_windows_packages.py --update-lock
+
+      - name: Prepare lockfile artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force _lock_artifacts/config | Out-Null
+          Copy-Item config/windows-packages.lock.toml _lock_artifacts/config/windows-packages.lock.toml
+
+      - name: Upload Windows lockfile
+        uses: actions/upload-artifact@v7
+        with:
+          name: updated-windows-lockfile
+          path: _lock_artifacts/
+          if-no-files-found: error
+
+  collect-lockfiles:
+    name: Collect updated lockfiles
+    needs: [linux-lockfiles, windows-lockfile]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Download updated lockfiles
+        uses: actions/download-artifact@v8
+        with:
+          pattern: updated-*
+          path: _updated
+          merge-multiple: true
+
+      - name: Apply updated lockfiles
+        shell: bash
+        run: |
+          cp _updated/uv.lock uv.lock
+          cp _updated/config/source-lock.generated.toml config/source-lock.generated.toml
+          cp _updated/config/windows-packages.lock.toml config/windows-packages.lock.toml
+          git diff -- uv.lock config/source-lock.generated.toml config/windows-packages.lock.toml || true
+
+      - name: Upload combined lockfiles
+        uses: actions/upload-artifact@v7
+        with:
+          name: updated-lockfiles
+          path: |
+            uv.lock
+            config/source-lock.generated.toml
+            config/windows-packages.lock.toml
+          if-no-files-found: error
+
+      - name: Commit and push lockfiles
+        if: ${{ inputs.commit_changes }}
+        shell: bash
+        run: |
+          if git diff --quiet -- uv.lock config/source-lock.generated.toml config/windows-packages.lock.toml; then
+            echo "Lockfiles are already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock config/source-lock.generated.toml config/windows-packages.lock.toml
+          git commit -m "build: update dependency lockfiles"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

@@ -1,0 +1,123 @@
+name: Build wheels
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-wheels-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-wheel:
+    name: Linux manylinux_2_28 x86_64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Require committed uv lock
+        shell: bash
+        run: |
+          test -f uv.lock || {
+            echo "uv.lock is missing. Run the Update lockfiles workflow and commit its result." >&2
+            exit 1
+          }
+
+      - name: Build Manylinux image
+        shell: bash
+        run: |
+          docker build \
+            --file containers/Dockerfile.manylinux_2_28 \
+            --tag weasyprintlibs-manylinux:ci \
+            .
+
+      - name: Build Linux wheel in container
+        shell: bash
+        run: |
+          docker run --rm \
+            --volume "${GITHUB_WORKSPACE}:/io" \
+            --workdir /io \
+            --env UV_CACHE_DIR=/io/.uv-cache \
+            weasyprintlibs-manylinux:ci \
+            bash -lc 'uv sync --frozen && make wheel'
+
+      - name: Show generated wheel
+        shell: bash
+        run: |
+          ls -lh dist/*.whl
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          wheels = list(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one wheel, got {wheels}")
+          with zipfile.ZipFile(wheels[0]) as archive:
+              dlls = [name for name in archive.namelist() if name.endswith('.so') or '.so.' in name]
+          if not dlls:
+              raise SystemExit("Linux wheel contains no shared libraries")
+          print(f"Wheel contains {len(dlls)} Linux shared libraries")
+          PY
+
+      - name: Upload Linux wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheel-manylinux-2-28-x86-64
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-wheel:
+    name: Windows x86_64
+    runs-on: windows-2025
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Require committed lockfiles
+        shell: pwsh
+        run: |
+          if (-not (Test-Path uv.lock)) {
+            throw "uv.lock is missing. Run the Update lockfiles workflow and commit its result."
+          }
+          if (-not (Test-Path config/windows-packages.lock.toml)) {
+            throw "config/windows-packages.lock.toml is missing. Run the Update lockfiles workflow and commit its result."
+          }
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Build Windows wheel
+        shell: pwsh
+        run: ./scripts/build_windows.ps1
+
+      - name: Show generated wheel
+        shell: pwsh
+        run: |
+          $wheels = @(Get-ChildItem dist/*.whl)
+          if ($wheels.Count -ne 1) {
+            throw "Expected exactly one wheel, got $($wheels.Count)"
+          }
+          Write-Host $wheels[0].FullName
+          uv run python -c "import pathlib, zipfile; p=next(pathlib.Path('dist').glob('*.whl')); z=zipfile.ZipFile(p); dlls=[n for n in z.namelist() if n.lower().endswith('.dll')]; print(f'Wheel contains {len(dlls)} DLLs'); assert dlls"
+
+      - name: Upload Windows wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheel-windows-x86-64
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 14

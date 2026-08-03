@@ -1,0 +1,16 @@
+.venv/
+.uv-cache/
+_build/
+build/
+dist/
+downloads/current/
+downloads/windows/
+*.egg-info/
+__pycache__/
+*.py[cod]
+
+# Generated wheel payload
+src/weasyprintlibs_native/lib/
+src/weasyprintlibs_native/bin/
+src/weasyprintlibs_native/etc/
+src/weasyprintlibs_native/share/
