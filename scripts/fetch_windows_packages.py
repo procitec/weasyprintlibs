@@ -10,7 +10,7 @@ import sys
 import tarfile
 import tomllib
 import urllib.request
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import zstandard
@@ -50,24 +50,41 @@ def find_pacman(explicit: str | None) -> Path:
 
 def pkginfo_from_archive(path: Path) -> dict[str, str]:
     with path.open("rb") as compressed:
-        with zstandard.ZstdDecompressor().stream_reader(compressed) as reader:
+        decompressor = zstandard.ZstdDecompressor()
+
+        with decompressor.stream_reader(compressed) as reader:
             with tarfile.open(fileobj=reader, mode="r|") as archive:
                 for member in archive:
-                    if member.name.lstrip("./") != ".PKGINFO":
+                    if PurePosixPath(member.name).name != ".PKGINFO":
                         continue
+
                     extracted = archive.extractfile(member)
                     if extracted is None:
-                        break
-                    result: dict[str, str] = {}
-                    for raw_line in io.TextIOWrapper(extracted, encoding="utf-8"):
-                        line = raw_line.strip()
-                        if not line or line.startswith("#") or " = " not in line:
-                            continue
-                        key, value = line.split(" = ", 1)
-                        result.setdefault(key, value)
-                    return result
-    raise RuntimeError(f"Archive does not contain .PKGINFO: {path}")
+                        raise RuntimeError(
+                            f"Could not extract .PKGINFO from {path}"
+                        )
 
+                    result: dict[str, str] = {}
+
+                    with io.TextIOWrapper(
+                        extracted,
+                        encoding="utf-8",
+                    ) as text_stream:
+                        for raw_line in text_stream:
+                            line = raw_line.strip()
+
+                            if not line or line.startswith("#"):
+                                continue
+
+                            key, separator, value = line.partition(" = ")
+                            if not separator:
+                                continue
+
+                            result.setdefault(key, value)
+
+                    return result
+
+    raise RuntimeError(f"Archive does not contain .PKGINFO: {path}")
 
 def toml_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
