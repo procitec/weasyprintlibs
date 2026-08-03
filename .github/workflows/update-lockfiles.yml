@@ -44,7 +44,8 @@ jobs:
         run: |
           mkdir -p _lock_artifacts/config
           cp uv.lock _lock_artifacts/uv.lock
-          cp config/source-lock.generated.toml _lock_artifacts/config/source-lock.generated.toml
+          cp config/source-lock.generated.toml \
+            _lock_artifacts/config/source-lock.generated.toml
 
       - name: Upload Linux lockfiles
         uses: actions/upload-artifact@v7
@@ -68,6 +69,7 @@ jobs:
           enable-cache: true
 
       - name: Set up MSYS2
+        id: msys2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -76,25 +78,48 @@ jobs:
       - name: Resolve packages and write Windows lock
         shell: pwsh
         run: |
-            $pacman = Join-Path `
-            '${{ steps.msys2.outputs.msys2-location }}' `
-            'usr\bin\pacman.exe'
+          $msysRoot = '${{ steps.msys2.outputs.msys2-location }}'
 
-            Write-Host "Using pacman: $pacman"
+          if ([string]::IsNullOrWhiteSpace($msysRoot)) {
+            throw "The MSYS2 action returned no msys2-location output."
+          }
 
-            if (-not (Test-Path $pacman)) {
+          $pacman = Join-Path $msysRoot 'usr\bin\pacman.exe'
+
+          Write-Host "MSYS2 root: $msysRoot"
+          Write-Host "Using pacman: $pacman"
+
+          if (-not (Test-Path $pacman)) {
             throw "pacman.exe not found: $pacman"
-            }
+          }
 
-            uv run python scripts/fetch_windows_packages.py `
+          uv run python scripts/fetch_windows_packages.py `
             --update-lock `
             --pacman "$pacman"
-            
+
+      - name: Verify Windows lockfile
+        shell: pwsh
+        run: |
+          $lockfile = 'config/windows-packages.lock.toml'
+
+          if (-not (Test-Path $lockfile)) {
+            throw "Windows package lockfile was not created: $lockfile"
+          }
+
+          Get-Item $lockfile | Format-List FullName, Length, LastWriteTime
+
       - name: Prepare lockfile artifact
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force _lock_artifacts/config | Out-Null
-          Copy-Item config/windows-packages.lock.toml _lock_artifacts/config/windows-packages.lock.toml
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            '_lock_artifacts/config' |
+            Out-Null
+
+          Copy-Item `
+            'config/windows-packages.lock.toml' `
+            '_lock_artifacts/config/windows-packages.lock.toml'
 
       - name: Upload Windows lockfile
         uses: actions/upload-artifact@v7
@@ -105,7 +130,9 @@ jobs:
 
   collect-lockfiles:
     name: Collect updated lockfiles
-    needs: [linux-lockfiles, windows-lockfile]
+    needs:
+      - linux-lockfiles
+      - windows-lockfile
     runs-on: ubuntu-24.04
 
     steps:
@@ -124,10 +151,20 @@ jobs:
       - name: Apply updated lockfiles
         shell: bash
         run: |
-          cp _updated/uv.lock uv.lock
-          cp _updated/config/source-lock.generated.toml config/source-lock.generated.toml
-          cp _updated/config/windows-packages.lock.toml config/windows-packages.lock.toml
-          git diff -- uv.lock config/source-lock.generated.toml config/windows-packages.lock.toml || true
+          cp _updated/uv.lock \
+            uv.lock
+
+          cp _updated/config/source-lock.generated.toml \
+            config/source-lock.generated.toml
+
+          cp _updated/config/windows-packages.lock.toml \
+            config/windows-packages.lock.toml
+
+          git diff -- \
+            uv.lock \
+            config/source-lock.generated.toml \
+            config/windows-packages.lock.toml \
+            || true
 
       - name: Upload combined lockfiles
         uses: actions/upload-artifact@v7
@@ -143,12 +180,24 @@ jobs:
         if: ${{ inputs.commit_changes }}
         shell: bash
         run: |
-          if git diff --quiet -- uv.lock config/source-lock.generated.toml config/windows-packages.lock.toml; then
+          if git diff --quiet -- \
+            uv.lock \
+            config/source-lock.generated.toml \
+            config/windows-packages.lock.toml
+          then
             echo "Lockfiles are already current."
             exit 0
           fi
+
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add uv.lock config/source-lock.generated.toml config/windows-packages.lock.toml
+          git config \
+            user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            uv.lock \
+            config/source-lock.generated.toml \
+            config/windows-packages.lock.toml
+
           git commit -m "build: update dependency lockfiles"
           git push origin "HEAD:${GITHUB_REF_NAME}"
