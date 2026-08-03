@@ -89,11 +89,12 @@ jobs:
             uv run python scripts/fetch_windows_packages.py `
             --update-lock `
             --pacman "$pacman"
-            - name: Prepare lockfile artifact
-                shell: pwsh
-                run: |
-                New-Item -ItemType Directory -Force _lock_artifacts/config | Out-Null
-                Copy-Item config/windows-packages.lock.toml _lock_artifacts/config/windows-packages.lock.toml
+            
+      - name: Prepare lockfile artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force _lock_artifacts/config | Out-Null
+          Copy-Item config/windows-packages.lock.toml _lock_artifacts/config/windows-packages.lock.toml
 
       - name: Upload Windows lockfile
         uses: actions/upload-artifact@v7
