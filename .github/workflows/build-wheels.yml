@@ -26,7 +26,7 @@ env:
 
 jobs:
   linux-wheel:
-    name: Linux manylinux_2_28 x86_64
+    name: Linux manylinux_2_28 x86_64 wheel
     runs-on: ubuntu-24.04
     timeout-minutes: 90
 
@@ -60,10 +60,9 @@ jobs:
             weasyprintlibs-manylinux:ci \
             bash -lc 'uv sync --frozen && make wheel'
 
-      - name: Show generated wheel
+      - name: Show generated Linux wheel
         shell: bash
         run: |
-          ls -lh dist/*.whl
           python3 - <<'PY'
           import zipfile
           from pathlib import Path
@@ -123,16 +122,14 @@ jobs:
         shell: pwsh
         run: ./scripts/build_windows.ps1
 
-      - name: Show generated wheel
+      - name: Show generated Windows wheel
         shell: pwsh
         run: |
           $wheels = @(Get-ChildItem dist/*.whl)
           if ($wheels.Count -ne 1) {
             throw "Expected exactly one wheel, got $($wheels.Count)"
           }
-
-          Write-Host $wheels[0].FullName
-          uv run python -c "import pathlib, zipfile; p=next(pathlib.Path('dist').glob('*.whl')); z=zipfile.ZipFile(p); dlls=[n for n in z.namelist() if n.lower().endswith('.dll')]; print(f'Wheel contains {len(dlls)} DLLs'); assert dlls"
+          uv run python -c "import pathlib, zipfile; p=next(pathlib.Path('dist').glob('*.whl')); z=zipfile.ZipFile(p); dlls=[n for n in z.namelist() if n.lower().endswith('.dll')]; print(f'{p} contains {len(dlls)} DLLs'); assert dlls"
 
       - name: Upload Windows wheel
         uses: actions/upload-artifact@v7

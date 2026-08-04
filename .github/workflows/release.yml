@@ -33,7 +33,7 @@ env:
 
 jobs:
   linux-wheel:
-    name: Build Linux manylinux_2_28 x86_64 wheel
+    name: Linux manylinux_2_28 x86_64 wheel
     runs-on: ubuntu-24.04
     timeout-minutes: 90
 
@@ -41,7 +41,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Require committed lockfile
+      - name: Require committed uv lock
         shell: bash
         run: |
           test -f uv.lock || {
@@ -67,7 +67,7 @@ jobs:
             weasyprintlibs-manylinux:release \
             bash -lc 'uv sync --frozen && make wheel'
 
-      - name: Validate generated Linux wheel
+      - name: Show generated Linux wheel
         shell: bash
         run: |
           python3 - <<'PY'
@@ -80,12 +80,15 @@ jobs:
 
           with zipfile.ZipFile(wheels[0]) as archive:
               libraries = [
-                  name for name in archive.namelist()
+                  name
+                  for name in archive.namelist()
                   if name.endswith(".so") or ".so." in name
               ]
+
           if not libraries:
               raise SystemExit("Linux wheel contains no shared libraries")
-          print(f"{wheels[0]} contains {len(libraries)} shared libraries")
+
+          print(f"Wheel contains {len(libraries)} Linux shared libraries")
           PY
 
       - name: Upload Linux wheel
@@ -97,7 +100,7 @@ jobs:
           retention-days: 14
 
   windows-wheel:
-    name: Build Windows x86_64 wheel
+    name: Windows x86_64
     runs-on: windows-2025
     timeout-minutes: 45
 
@@ -111,6 +114,7 @@ jobs:
           if (-not (Test-Path uv.lock)) {
             throw "uv.lock is missing. Run the Update lockfiles workflow and commit its result."
           }
+
           if (-not (Test-Path config/windows-packages.lock.toml)) {
             throw "config/windows-packages.lock.toml is missing. Run the Update lockfiles workflow and commit its result."
           }
@@ -125,7 +129,7 @@ jobs:
         shell: pwsh
         run: ./scripts/build_windows.ps1
 
-      - name: Validate generated Windows wheel
+      - name: Show generated Windows wheel
         shell: pwsh
         run: |
           $wheels = @(Get-ChildItem dist/*.whl)
@@ -175,15 +179,26 @@ jobs:
             "pytest>=8,<9" \
             "pypdf>=6,<7"
 
-      - name: Run runtime smoke test
+      - name: Run runtime tests
         shell: bash
-        run: .test-venv/bin/python -m pytest tests/runtime/test_runtime.py -v -s
+        run: |
+          LD_DEBUG=libs,files \
+          LD_DEBUG_OUTPUT=/tmp/weasyprint-loader \
+          .test-venv/bin/python -m pytest \
+            tests/runtime/test_runtime.py \
+            -v \
+            -s
 
-      - name: Upload generated Ubuntu PDF
+          grep -E \
+          'lib(pango|pangocairo|pangoft2|harfbuzz|fontconfig|freetype|glib|gobject|gio|ffi|cairo)' \
+          /tmp/weasyprint-loader.* |
+          sort -u
+
+      - name: Upload Ubuntu test PDF
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: smoke-pdf-ubuntu-24-04
+          name: runtime-test-pdf-ubuntu-24-04
           path: tests/runtime/_output/*.pdf
           if-no-files-found: ignore
 
@@ -191,7 +206,7 @@ jobs:
     name: Test Rocky Linux ${{ matrix.rocky }}
     needs: linux-wheel
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     strategy:
       fail-fast: false
@@ -239,20 +254,31 @@ jobs:
             "pytest>=8,<9" \
             "pypdf>=6,<7"
 
-      - name: Run runtime smoke test
+      - name: Run runtime tests
         shell: bash
-        run: .test-venv/bin/python -m pytest tests/runtime/test_runtime.py -v -s
+        run: |
+          LD_DEBUG=libs,files \
+          LD_DEBUG_OUTPUT=/tmp/weasyprint-loader \
+          .test-venv/bin/python -m pytest \
+            tests/runtime/test_runtime.py \
+            -v \
+            -s
 
-      - name: Upload generated Rocky PDF
+          grep -E \
+          'lib(pango|pangocairo|pangoft2|harfbuzz|fontconfig|freetype|glib|gobject|gio|ffi|cairo)' \
+          /tmp/weasyprint-loader.* |
+          sort -u
+
+      - name: Upload Rocky test PDF
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: smoke-pdf-rocky-${{ matrix.rocky }}
+          name: runtime-test-pdf-rocky-${{ matrix.rocky }}
           path: tests/runtime/_output/*.pdf
           if-no-files-found: ignore
 
   test-windows:
-    name: Test Windows Server 2025
+    name: Test Windows x86_64
     needs: windows-wheel
     runs-on: windows-2025
     timeout-minutes: 20
@@ -292,11 +318,11 @@ jobs:
         shell: pwsh
         run: .test-venv\Scripts\python.exe -m pytest tests\runtime\test_runtime.py -v -s
 
-      - name: Upload generated Windows PDF
+      - name: Upload Windows test PDF
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: smoke-pdf-windows-2025
+          name: runtime-test-pdf-windows
           path: tests/runtime/_output/*.pdf
           if-no-files-found: ignore
 
