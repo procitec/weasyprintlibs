@@ -3,7 +3,15 @@ from __future__ import annotations
 import argparse, hashlib, shutil, sys, tomllib, urllib.request
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
+PROJECT_CFG = ROOT / "pyproject.toml"
 CFG = ROOT / 'config' / 'libraries.toml'
+
+def load_project_identity() -> tuple[str, str]:
+    project_cfg = tomllib.loads(
+        PROJECT_CFG.read_text(encoding="utf-8")
+    )
+    project = project_cfg["project"]
+    return project["name"], project["version"]
 
 def digest(path: Path, algo: str) -> str:
     h = hashlib.new(algo)
@@ -21,12 +29,15 @@ def main() -> None:
     out = ROOT / cfg['build']['download_dir']
     out.mkdir(parents=True, exist_ok=True)
     locked = []
+    project_name, project_version = load_project_identity()
+    user_agent = f"{project_name}/{project_version}"
+
     for item in cfg['library']:
         dst = out / item['archive']
         if args.refresh and dst.exists(): dst.unlink()
         if not dst.exists():
             print(f"download {item['name']} {item['version']}: {item['url']}", flush=True)
-            req = urllib.request.Request(item['url'], headers={'User-Agent':'weasyprintlibs-superbuild/2026.1'})
+            req = urllib.request.Request(item['url'], headers={'User-Agent':user_agent})
             with urllib.request.urlopen(req) as src, dst.open('wb') as target:
                 shutil.copyfileobj(src, target)
         checksum = item.get('checksum', 'unlocked')

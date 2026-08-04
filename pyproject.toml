@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "procitec-weasyprint-libs"
-version = "26.1"
+version = "26.1.0"
 description = "Bundled native libraries for a reproducible WeasyPrint runtime"
 requires-python = ">=3.13"
 license = "MIT"

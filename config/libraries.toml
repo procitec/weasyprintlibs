@@ -1,6 +1,4 @@
 [stack]
-name = "weasyprint-native"
-version = "2026.1"
 weasyprint = "69.0"
 platform_tag = "manylinux_2_28_x86_64"
 
