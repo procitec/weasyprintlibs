@@ -56,6 +56,7 @@ def _activate_windows(root: Path) -> None:
 def _activate_linux(root: Path) -> None:
     lib_dir = root / "lib"
     for name in (
+        "libffi.so.8",
         "libglib-2.0.so.0",
         "libgobject-2.0.so.0",
         "libgio-2.0.so.0",

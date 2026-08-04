@@ -207,7 +207,6 @@ jobs:
         run: |
           dnf install -y \
             ca-certificates \
-            curl \
             tar \
             gzip \
             findutils \

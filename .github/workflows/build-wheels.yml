@@ -216,7 +216,6 @@ jobs:
         shell: bash
         run: |
           dnf install -y \
-            curl \
             findutils \
             gzip \
             tar
