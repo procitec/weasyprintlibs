@@ -11,9 +11,9 @@ python -m pip install weasyprint_libs-*.whl weasyprint
 The package installs `weasyprint_libs.pth`. Python processes this file during site initialization and calls:
 
 ```python
-import weasyprintlibs_native
+import weasyprint_libs
 
-weasyprintlibs_native.activate()
+weasyprint_libs.activate()
 ```
 
 No explicit activation is required in application code:
@@ -29,14 +29,14 @@ HTML(string="<h1>Hello</h1>").write_pdf("output.pdf")
 The native libraries are installed below:
 
 ```text
-site-packages/weasyprintlibs_native/lib/
+site-packages/weasyprint_libs/lib/
 ```
 
 Fontconfig configuration and runtime data are installed below:
 
 ```text
-site-packages/weasyprintlibs_native/etc/fonts/
-site-packages/weasyprintlibs_native/share/
+site-packages/weasyprint_libs/etc/fonts/
+site-packages/weasyprint_libs/share/
 ```
 
 The loader configures Fontconfig before loading Pango and related libraries. The wheel does not necessarily include font files; the operating system must provide usable fonts unless fonts are added explicitly to the package.
@@ -46,7 +46,7 @@ The loader configures Fontconfig before loading Pango and related libraries. The
 The DLL directory is installed below:
 
 ```text
-site-packages/weasyprintlibs_native/bin/
+site-packages/weasyprint_libs/bin/
 ```
 
 The loader adds this directory with `os.add_dll_directory()` and keeps the returned handle alive for the process lifetime.

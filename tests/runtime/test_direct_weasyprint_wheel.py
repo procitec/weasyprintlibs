@@ -18,7 +18,7 @@ def _assert_legacy_runtime_is_absent() -> None:
     with pytest.raises(importlib.metadata.PackageNotFoundError):
         importlib.metadata.distribution("weasyprint-libs")
 
-    assert importlib.util.find_spec("weasyprintlibs_native") is None
+    assert importlib.util.find_spec("weasyprint_libs") is None
 
 
 def _loaded_native_paths() -> set[Path]:
@@ -40,13 +40,13 @@ def _loaded_native_paths() -> set[Path]:
 def test_direct_weasyprint_wheel_builds_document_without_legacy_wheel() -> None:
     _assert_legacy_runtime_is_absent()
 
-    from weasyprint import HTML, _procitec_native_loader
+    from weasyprint import HTML, _weasyprint_libs_loader
     from weasyprint import __version__ as weasyprint_version
 
     package_dir = Path(__import__("weasyprint").__file__).resolve().parent
-    runtime_dir = package_dir / "_procitec_native"
+    runtime_dir = package_dir / "_weasyprint_libs"
 
-    assert _procitec_native_loader._ACTIVATED is True
+    assert _weasyprint_libs_loader._ACTIVATED is True
     assert runtime_dir.is_dir()
 
     if sys.platform == "win32":

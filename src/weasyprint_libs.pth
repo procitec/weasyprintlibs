@@ -1,1 +1,1 @@
-import weasyprintlibs_native; weasyprintlibs_native.activate()
+import weasyprint_libs; weasyprint_libs.activate()

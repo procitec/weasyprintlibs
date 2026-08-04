@@ -26,7 +26,7 @@ def main() -> None:
     parser.add_argument(
         "--package",
         type=Path,
-        default=Path("src/weasyprintlibs_native"),
+        default=Path("src/weasyprint_libs"),
     )
     args = parser.parse_args()
 

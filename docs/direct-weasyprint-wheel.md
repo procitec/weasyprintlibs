@@ -36,7 +36,7 @@ The generated file is written to `dist/` and keeps the upstream package name and
 
 1. build or extract the native runtime;
 2. download the exact upstream `py3-none-any` WeasyPrint wheel;
-3. copy the runtime into `weasyprint/_procitec_native`;
+3. copy the runtime into `weasyprint/_weasyprint_libs`;
 4. add an early loader call to `weasyprint/__init__.py`;
 5. change `Root-Is-Purelib` and the wheel platform tag;
 6. regenerate `RECORD` and repack the wheel.
@@ -58,6 +58,6 @@ The build and release workflows create two independent artifacts per platform:
 
 The `test-direct-*` jobs install only the `direct-weasyprint-*` artifact. Their
 runtime test renders `tests/runtime/document.html` and verifies that the legacy
-`procitec-weasyprint-libs` distribution and `weasyprintlibs_native` package are
+`procitec-weasyprint-libs` distribution and `weasyprint_libs` package are
 not present. The release workflow publishes both wheel variants after all tests
 have passed.

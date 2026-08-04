@@ -15,7 +15,7 @@ def is_elf(path: Path) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("root", type=Path, nargs="?", default=Path("src/weasyprintlibs_native/lib"))
+    parser.add_argument("root", type=Path, nargs="?", default=Path("src/weasyprint_libs/lib"))
     args = parser.parse_args()
     root = args.root.resolve()
     for path in root.rglob("*"):

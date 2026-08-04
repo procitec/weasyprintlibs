@@ -120,8 +120,8 @@ jobs:
           with zipfile.ZipFile(wheels[0]) as archive:
               names = archive.namelist()
 
-          assert "weasyprint/_procitec_native_loader.py" in names
-          assert any(name.startswith("weasyprint/_procitec_native/lib/") for name in names)
+          assert "weasyprint/_weasyprint_libs_loader.py" in names
+          assert any(name.startswith("weasyprint/_weasyprint_libs/lib/") for name in names)
           assert not any(name.startswith("weasyprintlibs_native/") for name in names)
           print(wheels[0])
           PY
@@ -204,7 +204,7 @@ jobs:
           if ($wheels.Count -ne 1) {
             throw "Expected exactly one direct WeasyPrint wheel, got $($wheels.Count)"
           }
-          uv run python -c "import pathlib, zipfile; p=next(pathlib.Path('dist-direct').glob('weasyprint-*.whl')); names=zipfile.ZipFile(p).namelist(); assert 'weasyprint/_procitec_native_loader.py' in names; assert any(n.startswith('weasyprint/_procitec_native/bin/') for n in names); assert not any(n.startswith('weasyprintlibs_native/') for n in names); print(p)"
+          uv run python -c "import pathlib, zipfile; p=next(pathlib.Path('dist-direct').glob('weasyprint-*.whl')); names=zipfile.ZipFile(p).namelist(); assert 'weasyprint/_weasyprint_libs_loader.py' in names; assert any(n.startswith('weasyprint/_weasyprint_libs/bin/') for n in names); assert not any(n.startswith('weasyprintlibs_native/') for n in names); print(p)"
 
       - name: Upload direct WeasyPrint Windows wheel
         uses: actions/upload-artifact@v7

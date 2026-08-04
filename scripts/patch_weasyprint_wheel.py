@@ -14,8 +14,8 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUNDLED_DIR = "_procitec_native"
-BOOTSTRAP_MODULE = "_procitec_native_loader.py"
+BUNDLED_DIR = "_weasyprint_libs"
+BOOTSTRAP_MODULE = "_weasyprint_libs_loader.py"
 
 
 def download_wheel(version: str, destination: Path) -> Path:
@@ -94,7 +94,7 @@ def activate() -> None:
     if _ACTIVATED:
         return
 
-    root = Path(__file__).resolve().parent / "_procitec_native"
+    root = Path(__file__).resolve().parent / "_weasyprint_libs"
     fonts_dir = root / "etc" / "fonts"
     fonts_conf = fonts_dir / "fonts.conf"
     if fonts_conf.is_file():
@@ -133,10 +133,10 @@ def activate() -> None:
 def patch_init(package: Path) -> None:
     init = package / "__init__.py"
     original = init.read_text(encoding="utf-8")
-    marker = "from ._procitec_native_loader import activate as _activate_procitec_native"
+    marker = "from ._weasyprint_libs_loader import activate as _activate_weasyprint_libs"
     if marker in original:
         return
-    prefix = f"{marker}\n_activate_procitec_native()\ndel _activate_procitec_native\n\n"
+    prefix = f"{marker}\n_activate_weasyprint_libs()\ndel _activate_weasyprint_libs\n\n"
     init.write_text(prefix + original, encoding="utf-8")
     (package / BOOTSTRAP_MODULE).write_text(bootstrap_source(), encoding="utf-8")
 
@@ -232,7 +232,7 @@ def main() -> None:
     source.add_argument(
         "--version", help="WeasyPrint version to download from the configured package index"
     )
-    parser.add_argument("--runtime", type=Path, default=Path("src/weasyprintlibs_native"))
+    parser.add_argument("--runtime", type=Path, default=Path("src/weasyprint_libs"))
     parser.add_argument("--download-dir", type=Path, default=Path("downloads/weasyprint"))
     parser.add_argument("--output-dir", type=Path, default=Path("dist"))
     parser.add_argument("--platform-tag", required=True)

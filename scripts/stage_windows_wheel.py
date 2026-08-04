@@ -7,7 +7,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config" / "windows-packages.toml"
-PACKAGE_ROOT = ROOT / "src" / "weasyprintlibs_native"
+PACKAGE_ROOT = ROOT / "src" / "weasyprint_libs"
 
 
 def load_toml(path: Path) -> dict[str, Any]:

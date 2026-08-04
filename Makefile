@@ -55,7 +55,7 @@ verify-pth:
 	$(UV_RUN) python scripts/verify_pth_wheel.py
 
 clean:
-	rm -rf _build dist src/weasyprintlibs_native/lib src/weasyprintlibs_native/bin src/weasyprintlibs_native/etc src/weasyprintlibs_native/share
+	rm -rf _build dist src/weasyprint_libs/lib src/weasyprint_libs/bin src/weasyprint_libs/etc src/weasyprint_libs/share
 
 distclean: clean
 	rm -rf .venv .uv-cache downloads/current

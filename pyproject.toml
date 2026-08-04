@@ -29,7 +29,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-weasyprintlibs_native = ["lib/**", "bin/**", "etc/**", "share/**"]
+weasyprint_libs = ["lib/**", "bin/**", "etc/**", "share/**"]
 
 [tool.ruff]
 target-version = "py313"
@@ -41,7 +41,7 @@ exclude = [
     "dist",
     "dist-direct",
     "downloads",
-    "src/weasyprintlibs_native",
+    "src/weasyprint_libs",
 ]
 
 [tool.ruff.lint]

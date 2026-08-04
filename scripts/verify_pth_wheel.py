@@ -25,7 +25,7 @@ def main() -> None:
         pth_path = candidates[0]
         content = archive.read(pth_path).decode("utf-8").strip()
 
-    expected = "import weasyprintlibs_native; weasyprintlibs_native.activate()"
+    expected = "import weasyprint_libs; weasyprint_libs.activate()"
 
     if content != expected:
         raise SystemExit(f"Unexpected content in {pth_path}: {content!r}")

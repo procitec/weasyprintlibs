@@ -10,7 +10,7 @@ def test_pth_activates_native_runtime_before_weasyprint_import() -> None:
 import json
 import os
 
-import weasyprintlibs_native.loader as loader
+import weasyprint_libs.loader as loader
 from weasyprint import HTML
 
 pdf = HTML(string="<h1>PTH activation works</h1>").write_pdf()

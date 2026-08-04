@@ -46,8 +46,8 @@ readelf -d path/to/library.so | grep -E 'NEEDED|RPATH|RUNPATH|SONAME'
 Resolved dependencies:
 
 ```bash
-LD_LIBRARY_PATH=path/to/weasyprintlibs_native/lib \
-ldd path/to/weasyprintlibs_native/lib/libpango-1.0.so.0
+LD_LIBRARY_PATH=path/to/weasyprint_libs/lib \
+ldd path/to/weasyprint_libs/lib/libpango-1.0.so.0
 ```
 
 Wheel contents:
