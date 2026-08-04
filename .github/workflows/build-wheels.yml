@@ -183,10 +183,17 @@ jobs:
       - name: Run runtime tests
         shell: bash
         run: |
+          LD_DEBUG=libs,files \
+          LD_DEBUG_OUTPUT=/tmp/weasyprint-loader \
           .test-venv/bin/python -m pytest \
             tests/runtime/test_runtime.py \
             -v \
             -s
+
+          grep -E \
+          'lib(pango|pangocairo|pangoft2|harfbuzz|fontconfig|freetype|glib|gobject|gio|ffi|cairo)' \
+          /tmp/weasyprint-loader.* |
+          sort -u
 
       - name: Upload Ubuntu test PDF
         if: always()
@@ -257,10 +264,17 @@ jobs:
       - name: Run runtime tests
         shell: bash
         run: |
+          LD_DEBUG=libs,files \
+          LD_DEBUG_OUTPUT=/tmp/weasyprint-loader \
           .test-venv/bin/python -m pytest \
             tests/runtime/test_runtime.py \
             -v \
             -s
+
+          grep -E \
+          'lib(pango|pangocairo|pangoft2|harfbuzz|fontconfig|freetype|glib|gobject|gio|ffi|cairo)' \
+          /tmp/weasyprint-loader.* |
+          sort -u
 
       - name: Upload Rocky test PDF
         if: always()

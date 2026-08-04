@@ -21,10 +21,6 @@ def activate() -> None:
     else:
         _activate_linux(root)
 
-    fonts_conf = root / "etc" / "fonts" / "fonts.conf"
-    if fonts_conf.exists():
-        os.environ.setdefault("FONTCONFIG_FILE", str(fonts_conf))
-
     _ACTIVATED = True
 
 
@@ -54,9 +50,11 @@ def _activate_windows(root: Path) -> None:
 
 
 def _load_local(path: Path) -> None:
+    mode = ctypes.RTLD_LOCAL | getattr(os, "RTLD_NOW", 0)
+
     handle = ctypes.CDLL(
         str(path),
-        mode=ctypes.RTLD_LOCAL | ctypes.RTLD_NOW,
+        mode=mode,
     )
     _DLL_HANDLES.append(handle)
 
