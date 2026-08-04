@@ -53,8 +53,33 @@ def _activate_windows(root: Path) -> None:
             _DLL_HANDLES.append(ctypes.WinDLL(str(path)))
 
 
+def _configure_fontconfig(root: Path) -> None:
+    fonts_dir = root / "etc" / "fonts"
+    fonts_conf = fonts_dir / "fonts.conf"
+
+    if not fonts_conf.is_file():
+        raise RuntimeError(
+            f"Bundled Fontconfig configuration is missing: {fonts_conf}"
+        )
+
+    # FONTCONFIG_FILE may be absolute.
+    os.environ.setdefault("FONTCONFIG_FILE", str(fonts_conf))
+
+    # Required for relative includes such as:
+    #   <include>conf.d</include>
+    os.environ.setdefault("FONTCONFIG_PATH", str(fonts_dir))
+
+    # Ensure Fontconfig has a writable cache location in minimal containers.
+    cache_dir = root / "cache" / "fontconfig"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("XDG_CACHE_HOME", str(root / "cache"))
+
+
 def _activate_linux(root: Path) -> None:
+    _configure_fontconfig(root)
+
     lib_dir = root / "lib"
+
     for name in (
         "libffi.so.8",
         "libglib-2.0.so.0",

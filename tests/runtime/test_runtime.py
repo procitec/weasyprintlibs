@@ -12,13 +12,49 @@ HERE = Path(__file__).resolve().parent
 OUTPUT_DIR = HERE / "_output"
 
 
-def test_weasyprint_runtime() -> None:
-    # The native runtime must be activated before importing WeasyPrint.
-    import weasyprintlibs_native
+def dump_loaded_libraries() -> None:
+    interesting = (
+        "pango",
+        "harfbuzz",
+        "fontconfig",
+        "freetype",
+        "glib",
+        "gobject",
+        "gio",
+        "ffi",
+        "cairo",
+        "pixman",
+        "expat",
+        "png",
+        "zlib",
+    )
 
-    weasyprintlibs_native.activate()
+    paths: set[str] = set()
+
+    for line in Path("/proc/self/maps").read_text().splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+
+        path = fields[-1]
+        lower = path.lower()
+
+        if path.startswith("/") and any(name in lower for name in interesting):
+            paths.add(path)
+
+    print("\nLoaded native libraries:")
+    for path in sorted(paths):
+        print(f"  {path}")
+
+
+def test_weasyprint_runtime() -> None:
+
+    dump_loaded_libraries()
 
     from weasyprint import HTML, __version__ as weasyprint_version
+
+    dump_loaded_libraries()
+
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_pdf = OUTPUT_DIR / "runtime-smoke-test.pdf"
@@ -27,6 +63,9 @@ def test_weasyprint_runtime() -> None:
         filename=str(HERE / "document.html"),
         base_url=str(HERE),
     ).write_pdf(output_pdf)
+
+    dump_loaded_libraries()
+
 
     assert output_pdf.is_file()
     assert output_pdf.stat().st_size > 2_000

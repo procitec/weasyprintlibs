@@ -218,7 +218,8 @@ jobs:
           dnf install -y \
             findutils \
             gzip \
-            tar
+            tar \
+            dejavu-sans-fonts
 
       - name: Check out repository
         uses: actions/checkout@v6
