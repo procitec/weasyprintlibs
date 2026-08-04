@@ -524,6 +524,16 @@ jobs:
         shell: bash
         run: ls -lh release-assets/*.whl
 
+      - name: Verify release assets
+        run: |
+            shopt -s nullglob
+            wheels=(release-assets/*.whl)
+
+            if (( ${#wheels[@]} == 0 )); then
+            echo "No wheel artifacts found"
+            exit 1
+            fi
+
       - name: Create GitHub release
         shell: bash
         env:
@@ -534,6 +544,7 @@ jobs:
           args=(
             release create "${RELEASE_TAG}"
             release-assets/*.whl
+            --repo "${GITHUB_REPOSITORY}"
             --target "${GITHUB_SHA}"
             --generate-notes
             --title "${RELEASE_TAG}"
