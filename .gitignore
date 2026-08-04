@@ -9,6 +9,9 @@ downloads/weasyprint/
 *.egg-info/
 __pycache__/
 *.py[cod]
+# generated
+src/weasyprint_libs.egg-info
+
 
 # Generated wheel payload
 src/weasyprintlibs_native/lib/

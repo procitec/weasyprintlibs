@@ -3,7 +3,7 @@ requires = ["setuptools>=80", "wheel>=0.45"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "procitec-weasyprint-libs"
+name = "weasyprint-libs"
 version = "26.1.0"
 description = "Bundled native libraries for a reproducible WeasyPrint runtime"
 requires-python = ">=3.13"

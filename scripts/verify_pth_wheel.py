@@ -1,7 +1,7 @@
 from pathlib import Path
 from zipfile import ZipFile
 
-PTH_NAME = "procitec_weasyprint_libs.pth"
+PTH_NAME = "weasyprint_libs.pth"
 
 
 def main() -> None:

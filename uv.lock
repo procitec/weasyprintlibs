@@ -38,8 +38,8 @@ wheels = [
 ]
 
 [[package]]
-name = "procitec-weasyprint-libs"
-version = "26.1"
+name = "weasyprint-libs"
+version = "26.1.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]

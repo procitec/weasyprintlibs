@@ -5,7 +5,7 @@
 The wheel contains a top-level `.pth` file:
 
 ```text
-procitec_weasyprint_libs.pth
+weasyprint_libs.pth
 ```
 
 Its purpose is to initialize the packaged native runtime during Python site initialization. The activation function is idempotent and keeps native library handles alive.

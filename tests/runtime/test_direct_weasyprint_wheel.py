@@ -16,7 +16,7 @@ OUTPUT_DIR = HERE / "_output_direct"
 
 def _assert_legacy_runtime_is_absent() -> None:
     with pytest.raises(importlib.metadata.PackageNotFoundError):
-        importlib.metadata.distribution("procitec-weasyprint-libs")
+        importlib.metadata.distribution("weasyprint-libs")
 
     assert importlib.util.find_spec("weasyprintlibs_native") is None
 

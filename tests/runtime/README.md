@@ -20,6 +20,6 @@ uv pip install --python .test-venv/bin/python dist/*.whl weasyprint==69.0 pytest
 ## Direct WeasyPrint wheel
 
 `test_direct_weasyprint_wheel.py` installs and tests only the patched WeasyPrint wheel.
-It verifies that `procitec-weasyprint-libs` is not installed, that
+It verifies that `weasyprint-libs` is not installed, that
 `weasyprintlibs_native` cannot be imported, and that the native libraries bundled
 inside the WeasyPrint package are used to build the same two-page test document.

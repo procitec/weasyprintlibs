@@ -5,10 +5,10 @@
 Install the platform-specific wheel together with WeasyPrint:
 
 ```bash
-python -m pip install procitec_weasyprint_libs-*.whl weasyprint
+python -m pip install weasyprint_libs-*.whl weasyprint
 ```
 
-The package installs `procitec_weasyprint_libs.pth`. Python processes this file during site initialization and calls:
+The package installs `weasyprint_libs.pth`. Python processes this file during site initialization and calls:
 
 ```python
 import weasyprintlibs_native
