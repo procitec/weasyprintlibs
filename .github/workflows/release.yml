@@ -1,32 +1,39 @@
-name: Build wheels
+name: Build, test and release wheels
 
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
-  pull_request:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: "Release tag to create, for example v26.1"
+        required: true
+        type: string
       weasyprint_version:
-        description: WeasyPrint version used for runtime tests
+        description: "WeasyPrint version used by the runtime tests"
         required: true
         default: "69.0"
         type: string
+      draft:
+        description: "Create the GitHub release as a draft"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-wheels-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-wheels-${{ github.ref }}-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   DEFAULT_WEASYPRINT_VERSION: "69.0"
-  TEST_PYTHON_VERSION: "3.13"
 
 jobs:
   linux-wheel:
-    name: Linux manylinux_2_28 x86_64
+    name: Build Linux manylinux_2_28 x86_64 wheel
     runs-on: ubuntu-24.04
     timeout-minutes: 90
 
@@ -34,7 +41,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Require committed uv lock
+      - name: Require committed lockfile
         shell: bash
         run: |
           test -f uv.lock || {
@@ -47,7 +54,7 @@ jobs:
         run: |
           docker build \
             --file containers/Dockerfile.manylinux_2_28 \
-            --tag weasyprintlibs-manylinux:ci \
+            --tag weasyprintlibs-manylinux:release \
             .
 
       - name: Build Linux wheel in container
@@ -57,13 +64,12 @@ jobs:
             --volume "${GITHUB_WORKSPACE}:/io" \
             --workdir /io \
             --env UV_CACHE_DIR=/io/.uv-cache \
-            weasyprintlibs-manylinux:ci \
+            weasyprintlibs-manylinux:release \
             bash -lc 'uv sync --frozen && make wheel'
 
-      - name: Show generated wheel
+      - name: Validate generated Linux wheel
         shell: bash
         run: |
-          ls -lh dist/*.whl
           python3 - <<'PY'
           import zipfile
           from pathlib import Path
@@ -74,15 +80,12 @@ jobs:
 
           with zipfile.ZipFile(wheels[0]) as archive:
               libraries = [
-                  name
-                  for name in archive.namelist()
+                  name for name in archive.namelist()
                   if name.endswith(".so") or ".so." in name
               ]
-
           if not libraries:
               raise SystemExit("Linux wheel contains no shared libraries")
-
-          print(f"Wheel contains {len(libraries)} Linux shared libraries")
+          print(f"{wheels[0]} contains {len(libraries)} shared libraries")
           PY
 
       - name: Upload Linux wheel
@@ -94,7 +97,7 @@ jobs:
           retention-days: 14
 
   windows-wheel:
-    name: Windows x86_64
+    name: Build Windows x86_64 wheel
     runs-on: windows-2025
     timeout-minutes: 45
 
@@ -108,7 +111,6 @@ jobs:
           if (-not (Test-Path uv.lock)) {
             throw "uv.lock is missing. Run the Update lockfiles workflow and commit its result."
           }
-
           if (-not (Test-Path config/windows-packages.lock.toml)) {
             throw "config/windows-packages.lock.toml is missing. Run the Update lockfiles workflow and commit its result."
           }
@@ -123,16 +125,14 @@ jobs:
         shell: pwsh
         run: ./scripts/build_windows.ps1
 
-      - name: Show generated wheel
+      - name: Validate generated Windows wheel
         shell: pwsh
         run: |
           $wheels = @(Get-ChildItem dist/*.whl)
           if ($wheels.Count -ne 1) {
             throw "Expected exactly one wheel, got $($wheels.Count)"
           }
-
-          Write-Host $wheels[0].FullName
-          uv run python -c "import pathlib, zipfile; p=next(pathlib.Path('dist').glob('*.whl')); z=zipfile.ZipFile(p); dlls=[n for n in z.namelist() if n.lower().endswith('.dll')]; print(f'Wheel contains {len(dlls)} DLLs'); assert dlls"
+          uv run python -c "import pathlib, zipfile; p=next(pathlib.Path('dist').glob('*.whl')); z=zipfile.ZipFile(p); dlls=[n for n in z.namelist() if n.lower().endswith('.dll')]; print(f'{p} contains {len(dlls)} DLLs'); assert dlls"
 
       - name: Upload Windows wheel
         uses: actions/upload-artifact@v7
@@ -154,8 +154,6 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: true
 
       - name: Download Linux wheel
         uses: actions/download-artifact@v8
@@ -166,42 +164,34 @@ jobs:
       - name: Install wheel and test dependencies
         shell: bash
         env:
-          INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
+          WEASYPRINT_VERSION: ${{ inputs.weasyprint_version || '69.0' }}
         run: |
-          weasyprint_version="${INPUT_WEASYPRINT_VERSION:-${DEFAULT_WEASYPRINT_VERSION}}"
-
-          uv python install "${TEST_PYTHON_VERSION}"
-          uv venv --python "${TEST_PYTHON_VERSION}" .test-venv
-
+          uv python install 3.13
+          uv venv --python 3.13 .test-venv
           uv pip install \
             --python .test-venv/bin/python \
             wheelhouse/*.whl \
-            "weasyprint==${weasyprint_version}" \
-            "pytest>=8" \
-            "pypdf>=6"
+            "weasyprint==${WEASYPRINT_VERSION}" \
+            "pytest>=8,<9" \
+            "pypdf>=6,<7"
 
-      - name: Run runtime tests
+      - name: Run runtime smoke test
         shell: bash
-        run: |
-          .test-venv/bin/python -m pytest \
-            tests/runtime/test_runtime.py \
-            -v \
-            -s
+        run: .test-venv/bin/python -m pytest tests/runtime/test_runtime.py -v -s
 
-      - name: Upload Ubuntu test PDF
+      - name: Upload generated Ubuntu PDF
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: runtime-test-pdf-ubuntu-24-04
+          name: smoke-pdf-ubuntu-24-04
           path: tests/runtime/_output/*.pdf
           if-no-files-found: ignore
-          retention-days: 14
 
   test-rocky:
     name: Test Rocky Linux ${{ matrix.rocky }}
     needs: linux-wheel
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 25
 
     strategy:
       fail-fast: false
@@ -212,17 +202,23 @@ jobs:
       image: rockylinux:${{ matrix.rocky }}
 
     steps:
-      - name: Install runner prerequisites
+      - name: Install basic operating-system tools
         shell: bash
         run: |
           dnf install -y \
+            ca-certificates \
             curl \
-            findutils \
+            tar \
             gzip \
-            tar
+            findutils \
+            dejavu-sans-fonts
+          dnf clean all
 
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
 
       - name: Download Linux wheel
         uses: actions/download-artifact@v8
@@ -230,49 +226,34 @@ jobs:
           name: wheel-manylinux-2-28-x86-64
           path: wheelhouse
 
-      - name: Install uv
-        shell: bash
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "/root/.local/bin" >> "$GITHUB_PATH"
-
       - name: Install wheel and test dependencies
         shell: bash
         env:
-          INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
+          WEASYPRINT_VERSION: ${{ inputs.weasyprint_version || '69.0' }}
         run: |
-          export PATH="/root/.local/bin:${PATH}"
-          weasyprint_version="${INPUT_WEASYPRINT_VERSION:-${DEFAULT_WEASYPRINT_VERSION}}"
-
-          uv python install "${TEST_PYTHON_VERSION}"
-          uv venv --python "${TEST_PYTHON_VERSION}" .test-venv
-
+          uv python install 3.13
+          uv venv --python 3.13 .test-venv
           uv pip install \
             --python .test-venv/bin/python \
             wheelhouse/*.whl \
-            "weasyprint==${weasyprint_version}" \
-            "pytest>=8" \
-            "pypdf>=6"
+            "weasyprint==${WEASYPRINT_VERSION}" \
+            "pytest>=8,<9" \
+            "pypdf>=6,<7"
 
-      - name: Run runtime tests
+      - name: Run runtime smoke test
         shell: bash
-        run: |
-          .test-venv/bin/python -m pytest \
-            tests/runtime/test_runtime.py \
-            -v \
-            -s
+        run: .test-venv/bin/python -m pytest tests/runtime/test_runtime.py -v -s
 
-      - name: Upload Rocky test PDF
+      - name: Upload generated Rocky PDF
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: runtime-test-pdf-rocky-${{ matrix.rocky }}
+          name: smoke-pdf-rocky-${{ matrix.rocky }}
           path: tests/runtime/_output/*.pdf
           if-no-files-found: ignore
-          retention-days: 14
 
   test-windows:
-    name: Test Windows x86_64
+    name: Test Windows Server 2025
     needs: windows-wheel
     runs-on: windows-2025
     timeout-minutes: 20
@@ -283,8 +264,6 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: true
 
       - name: Download Windows wheel
         uses: actions/download-artifact@v8
@@ -295,49 +274,35 @@ jobs:
       - name: Install wheel and test dependencies
         shell: pwsh
         env:
-          INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
+          WEASYPRINT_VERSION: ${{ inputs.weasyprint_version || '69.0' }}
         run: |
-          $weasyprintVersion = $env:INPUT_WEASYPRINT_VERSION
-          if ([string]::IsNullOrWhiteSpace($weasyprintVersion)) {
-            $weasyprintVersion = $env:DEFAULT_WEASYPRINT_VERSION
-          }
-
-          uv python install $env:TEST_PYTHON_VERSION
-          uv venv --python $env:TEST_PYTHON_VERSION .test-venv
-
+          uv python install 3.13
+          uv venv --python 3.13 .test-venv
           $wheel = Get-ChildItem wheelhouse\*.whl | Select-Object -First 1
           if ($null -eq $wheel) {
             throw "No Windows wheel found in wheelhouse"
           }
-
           uv pip install `
             --python .test-venv\Scripts\python.exe `
             $wheel.FullName `
-            "weasyprint==$weasyprintVersion" `
-            "pytest>=8" `
-            "pypdf>=6"
+            "weasyprint==$env:WEASYPRINT_VERSION" `
+            "pytest>=8,<9" `
+            "pypdf>=6,<7"
 
-      - name: Run runtime tests
+      - name: Run runtime smoke test
         shell: pwsh
-        run: |
-          .test-venv\Scripts\python.exe `
-            -m pytest `
-            tests\runtime\test_runtime.py `
-            -v `
-            -s
+        run: .test-venv\Scripts\python.exe -m pytest tests\runtime\test_runtime.py -v -s
 
-      - name: Upload Windows test PDF
+      - name: Upload generated Windows PDF
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: runtime-test-pdf-windows
+          name: smoke-pdf-windows-2025
           path: tests/runtime/_output/*.pdf
           if-no-files-found: ignore
-          retention-days: 14
 
-  test-summary:
-    name: Wheel test summary
-    if: always()
+  release:
+    name: Create GitHub release
     needs:
       - linux-wheel
       - windows-wheel
@@ -345,31 +310,74 @@ jobs:
       - test-rocky
       - test-windows
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+
+    permissions:
+      contents: write
 
     steps:
-      - name: Require all builds and tests to pass
+      - name: Download Linux wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: wheel-manylinux-2-28-x86-64
+          path: release-assets
+
+      - name: Download Windows wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: wheel-windows-x86-64
+          path: release-assets
+
+      - name: Determine release settings
+        id: release-settings
         shell: bash
         env:
-          LINUX_WHEEL_RESULT: ${{ needs.linux-wheel.result }}
-          WINDOWS_WHEEL_RESULT: ${{ needs.windows-wheel.result }}
-          UBUNTU_RESULT: ${{ needs.test-ubuntu.result }}
-          ROCKY_RESULT: ${{ needs.test-rocky.result }}
-          WINDOWS_RESULT: ${{ needs.test-windows.result }}
+          MANUAL_TAG: ${{ inputs.release_tag }}
+          MANUAL_DRAFT: ${{ inputs.draft }}
         run: |
-          printf '%-24s %s\n' "Linux wheel" "$LINUX_WHEEL_RESULT"
-          printf '%-24s %s\n' "Windows wheel" "$WINDOWS_WHEEL_RESULT"
-          printf '%-24s %s\n' "Ubuntu test" "$UBUNTU_RESULT"
-          printf '%-24s %s\n' "Rocky tests" "$ROCKY_RESULT"
-          printf '%-24s %s\n' "Windows test" "$WINDOWS_RESULT"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF_NAME}"
+            draft="false"
+          else
+            tag="${MANUAL_TAG}"
+            draft="${MANUAL_DRAFT:-false}"
+          fi
 
-          for result in \
-            "$LINUX_WHEEL_RESULT" \
-            "$WINDOWS_WHEEL_RESULT" \
-            "$UBUNTU_RESULT" \
-            "$ROCKY_RESULT" \
-            "$WINDOWS_RESULT"
-          do
-            if [[ "$result" != "success" ]]; then
-              exit 1
-            fi
-          done
+          if [[ -z "${tag}" ]]; then
+            echo "A release tag is required." >&2
+            exit 1
+          fi
+          if [[ ! "${tag}" =~ ^v[0-9] ]]; then
+            echo "Release tag must start with v followed by a number: ${tag}" >&2
+            exit 1
+          fi
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "draft=${draft}" >> "$GITHUB_OUTPUT"
+
+      - name: Show release assets
+        shell: bash
+        run: ls -lh release-assets/*.whl
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release-settings.outputs.tag }}
+          RELEASE_DRAFT: ${{ steps.release-settings.outputs.draft }}
+        run: |
+          args=(
+            release create "${RELEASE_TAG}"
+            release-assets/*.whl
+            --target "${GITHUB_SHA}"
+            --generate-notes
+            --title "${RELEASE_TAG}"
+          )
+
+          if [[ "${RELEASE_DRAFT}" == "true" ]]; then
+            args+=(--draft)
+          fi
+
+          gh "${args[@]}"
