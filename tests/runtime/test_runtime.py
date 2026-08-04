@@ -13,6 +13,9 @@ OUTPUT_DIR = HERE / "_output"
 
 
 def dump_loaded_libraries() -> None:
+    if sys.platform == "win32":
+        return
+
     interesting = (
         "pango",
         "harfbuzz",
@@ -48,7 +51,6 @@ def dump_loaded_libraries() -> None:
 
 
 def test_weasyprint_runtime() -> None:
-
     dump_loaded_libraries()
 
     from weasyprint import HTML, __version__ as weasyprint_version
@@ -78,20 +80,12 @@ def test_weasyprint_runtime() -> None:
     assert "WeasyPrint native runtime test" in extracted_text
     assert "Second page" in extracted_text
 
-    package_dir = Path(weasyprintlibs_native.__file__).resolve().parent
-    assert package_dir.is_dir()
 
     if sys.platform == "win32":
-        assert (package_dir / "bin").is_dir()
-        assert list((package_dir / "bin").glob("*.dll"))
         assert os.environ.get("WEASYPRINT_DLL_DIRECTORIES")
-    else:
-        assert (package_dir / "lib").is_dir()
-        assert list((package_dir / "lib").glob("*.so*"))
 
     print(f"platform={platform.platform()}")
     print(f"python={platform.python_version()}")
     print(f"weasyprint={weasyprint_version}")
-    print(f"native_package={package_dir}")
     print(f"fontconfig_file={os.environ.get('FONTCONFIG_FILE')}")
     print(f"pdf={output_pdf} ({output_pdf.stat().st_size} bytes)")

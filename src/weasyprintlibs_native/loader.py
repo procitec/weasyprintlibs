@@ -53,6 +53,14 @@ def _activate_windows(root: Path) -> None:
             _DLL_HANDLES.append(ctypes.WinDLL(str(path)))
 
 
+def _load_local(path: Path) -> None:
+    handle = ctypes.CDLL(
+        str(path),
+        mode=ctypes.RTLD_LOCAL | ctypes.RTLD_NOW,
+    )
+    _DLL_HANDLES.append(handle)
+
+
 def _configure_fontconfig(root: Path) -> None:
     fonts_dir = root / "etc" / "fonts"
     fonts_conf = fonts_dir / "fonts.conf"
@@ -95,4 +103,4 @@ def _activate_linux(root: Path) -> None:
     ):
         path = lib_dir / name
         if path.exists():
-            _DLL_HANDLES.append(ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL))
+            _load_local(path)
