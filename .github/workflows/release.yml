@@ -99,6 +99,28 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Build direct WeasyPrint Linux wheel
+        shell: bash
+        env:
+          WEASYPRINT_VERSION: ${{ inputs.weasyprint_version || '69.0' }}
+        run: |
+          rm -rf dist-direct
+          docker run --rm \
+            --volume "${GITHUB_WORKSPACE}:/io" \
+            --workdir /io \
+            --env UV_CACHE_DIR=/io/.uv-cache \
+            --env WEASYPRINT_VERSION \
+            weasyprintlibs-manylinux:release \
+            bash -lc 'uv run python scripts/patch_weasyprint_wheel.py --version "${WEASYPRINT_VERSION}" --platform-tag manylinux_2_28_x86_64 --output-dir dist-direct'
+
+      - name: Upload direct WeasyPrint Linux wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: direct-weasyprint-manylinux-2-28-x86-64
+          path: dist-direct/weasyprint-*.whl
+          if-no-files-found: error
+          retention-days: 14
+
   windows-wheel:
     name: Windows x86_64
     runs-on: windows-2025
@@ -143,6 +165,25 @@ jobs:
         with:
           name: wheel-windows-x86-64
           path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build direct WeasyPrint Windows wheel
+        shell: pwsh
+        env:
+          WEASYPRINT_VERSION: ${{ inputs.weasyprint_version || '69.0' }}
+        run: |
+          Remove-Item -Recurse -Force dist-direct -ErrorAction SilentlyContinue
+          uv run python scripts/patch_weasyprint_wheel.py `
+            --version $env:WEASYPRINT_VERSION `
+            --platform-tag win_amd64 `
+            --output-dir dist-direct
+
+      - name: Upload direct WeasyPrint Windows wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: direct-weasyprint-windows-x86-64
+          path: dist-direct/weasyprint-*.whl
           if-no-files-found: error
           retention-days: 14
 
@@ -326,6 +367,88 @@ jobs:
           path: tests/runtime/_output/*.pdf
           if-no-files-found: ignore
 
+  test-direct-ubuntu:
+    name: Test direct WeasyPrint wheel on Ubuntu 24.04
+    needs: linux-wheel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
+      - name: Download direct Linux wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: direct-weasyprint-manylinux-2-28-x86-64
+          path: wheelhouse-direct
+      - name: Install and test direct wheel only
+        shell: bash
+        run: |
+          uv python install 3.13
+          uv venv --python 3.13 .test-direct-venv
+          uv pip install --python .test-direct-venv/bin/python \
+            wheelhouse-direct/weasyprint-*.whl "pytest>=8,<9" "pypdf>=6,<7"
+          .test-direct-venv/bin/python -m pytest \
+            tests/runtime/test_direct_weasyprint_wheel.py -v -s
+
+  test-direct-rocky:
+    name: Test direct WeasyPrint wheel on Rocky Linux ${{ matrix.rocky }}
+    needs: linux-wheel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        rocky: ["8", "9"]
+    container:
+      image: rockylinux:${{ matrix.rocky }}
+    steps:
+      - name: Install prerequisites
+        run: dnf install -y ca-certificates tar gzip findutils dejavu-sans-fonts
+      - uses: actions/checkout@v6
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "/root/.local/bin" >> "$GITHUB_PATH"
+      - name: Download direct Linux wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: direct-weasyprint-manylinux-2-28-x86-64
+          path: wheelhouse-direct
+      - name: Install and test direct wheel only
+        shell: bash
+        run: |
+          export PATH="/root/.local/bin:${PATH}"
+          uv python install 3.13
+          uv venv --python 3.13 .test-direct-venv
+          uv pip install --python .test-direct-venv/bin/python \
+            wheelhouse-direct/weasyprint-*.whl "pytest>=8,<9" "pypdf>=6,<7"
+          .test-direct-venv/bin/python -m pytest \
+            tests/runtime/test_direct_weasyprint_wheel.py -v -s
+
+  test-direct-windows:
+    name: Test direct WeasyPrint wheel on Windows x86_64
+    needs: windows-wheel
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
+      - name: Download direct Windows wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: direct-weasyprint-windows-x86-64
+          path: wheelhouse-direct
+      - name: Install and test direct wheel only
+        shell: pwsh
+        run: |
+          uv python install 3.13
+          uv venv --python 3.13 .test-direct-venv
+          $wheel = Get-ChildItem wheelhouse-direct\weasyprint-*.whl | Select-Object -First 1
+          uv pip install --python .test-direct-venv\Scripts\python.exe `
+            $wheel.FullName "pytest>=8,<9" "pypdf>=6,<7"
+          .test-direct-venv\Scripts\python.exe -m pytest `
+            tests\runtime\test_direct_weasyprint_wheel.py -v -s
+
   release:
     name: Create GitHub release
     needs:
@@ -334,6 +457,9 @@ jobs:
       - test-ubuntu
       - test-rocky
       - test-windows
+      - test-direct-ubuntu
+      - test-direct-rocky
+      - test-direct-windows
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
@@ -353,6 +479,18 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: wheel-windows-x86-64
+          path: release-assets
+
+      - name: Download direct Linux wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: direct-weasyprint-manylinux-2-28-x86-64
+          path: release-assets
+
+      - name: Download direct Windows wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: direct-weasyprint-windows-x86-64
           path: release-assets
 
       - name: Determine release settings

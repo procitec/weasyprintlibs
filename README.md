@@ -29,6 +29,34 @@ Windows:
 
 Generated wheels are written to `dist/`.
 
+## Code quality
+
+Format all Python files locally:
+
+```bash
+make format
+```
+
+Run the same non-modifying format and lint checks as GitHub Actions:
+
+```bash
+make check
+```
+
+`make check` executes `ruff format --check .` followed by `ruff check .`. The dedicated code-quality workflow runs this target for pushes to `main`, pull requests and manual dispatches.
+
+To create a WeasyPrint wheel with the native runtime embedded directly:
+
+```bash
+make patched-wheel WEASYPRINT_VERSION=69.0
+```
+
+On Windows:
+
+```powershell
+.\scripts\build_patched_weasyprint_windows.ps1 -WeasyPrintVersion 69.0
+```
+
 ## Test locally
 
 ```bash
@@ -47,6 +75,7 @@ The complete platform matrix is tested by GitHub Actions on Ubuntu, Rocky Linux 
 
 - [Installation and use](docs/usage.md)
 - [Build and test workflow](docs/build.md)
+- [Directly patched WeasyPrint wheel](docs/direct-weasyprint-wheel.md)
 - [Runtime activation](docs/runtime.md)
 - [Licensing and redistribution](docs/licensing.md)
 - [Bundled third-party libraries](THIRD_PARTY_LICENSES.md)

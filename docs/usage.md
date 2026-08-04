@@ -12,6 +12,7 @@ The package installs `procitec_weasyprint_libs.pth`. Python processes this file 
 
 ```python
 import weasyprintlibs_native
+
 weasyprintlibs_native.activate()
 ```
 

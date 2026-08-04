@@ -92,6 +92,49 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Build direct WeasyPrint Linux wheel
+        shell: bash
+        env:
+          INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
+        run: |
+          weasyprint_version="${INPUT_WEASYPRINT_VERSION:-${DEFAULT_WEASYPRINT_VERSION}}"
+          rm -rf dist-direct
+          docker run --rm \
+            --volume "${GITHUB_WORKSPACE}:/io" \
+            --workdir /io \
+            --env UV_CACHE_DIR=/io/.uv-cache \
+            --env WEASYPRINT_VERSION="${weasyprint_version}" \
+            weasyprintlibs-manylinux:ci \
+            bash -lc 'uv run python scripts/patch_weasyprint_wheel.py --version "${WEASYPRINT_VERSION}" --platform-tag manylinux_2_28_x86_64 --output-dir dist-direct'
+
+      - name: Verify direct WeasyPrint Linux wheel
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          wheels = list(Path("dist-direct").glob("weasyprint-*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one direct WeasyPrint wheel, got {wheels}")
+
+          with zipfile.ZipFile(wheels[0]) as archive:
+              names = archive.namelist()
+
+          assert "weasyprint/_procitec_native_loader.py" in names
+          assert any(name.startswith("weasyprint/_procitec_native/lib/") for name in names)
+          assert not any(name.startswith("weasyprintlibs_native/") for name in names)
+          print(wheels[0])
+          PY
+
+      - name: Upload direct WeasyPrint Linux wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: direct-weasyprint-manylinux-2-28-x86-64
+          path: dist-direct/weasyprint-*.whl
+          if-no-files-found: error
+          retention-days: 14
+
   windows-wheel:
     name: Windows x86_64
     runs-on: windows-2025
@@ -136,6 +179,39 @@ jobs:
         with:
           name: wheel-windows-x86-64
           path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build direct WeasyPrint Windows wheel
+        shell: pwsh
+        env:
+          INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
+        run: |
+          $weasyprintVersion = $env:INPUT_WEASYPRINT_VERSION
+          if ([string]::IsNullOrWhiteSpace($weasyprintVersion)) {
+            $weasyprintVersion = $env:DEFAULT_WEASYPRINT_VERSION
+          }
+
+          Remove-Item -Recurse -Force dist-direct -ErrorAction SilentlyContinue
+          uv run python scripts/patch_weasyprint_wheel.py `
+            --version $weasyprintVersion `
+            --platform-tag win_amd64 `
+            --output-dir dist-direct
+
+      - name: Verify direct WeasyPrint Windows wheel
+        shell: pwsh
+        run: |
+          $wheels = @(Get-ChildItem dist-direct/weasyprint-*.whl)
+          if ($wheels.Count -ne 1) {
+            throw "Expected exactly one direct WeasyPrint wheel, got $($wheels.Count)"
+          }
+          uv run python -c "import pathlib, zipfile; p=next(pathlib.Path('dist-direct').glob('weasyprint-*.whl')); names=zipfile.ZipFile(p).namelist(); assert 'weasyprint/_procitec_native_loader.py' in names; assert any(n.startswith('weasyprint/_procitec_native/bin/') for n in names); assert not any(n.startswith('weasyprintlibs_native/') for n in names); print(p)"
+
+      - name: Upload direct WeasyPrint Windows wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: direct-weasyprint-windows-x86-64
+          path: dist-direct/weasyprint-*.whl
           if-no-files-found: error
           retention-days: 14
 
@@ -346,6 +422,177 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  test-direct-ubuntu:
+    name: Test direct WeasyPrint wheel on Ubuntu 24.04
+    needs: linux-wheel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Download direct WeasyPrint Linux wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: direct-weasyprint-manylinux-2-28-x86-64
+          path: wheelhouse-direct
+
+      - name: Install only direct WeasyPrint wheel and test dependencies
+        shell: bash
+        run: |
+          uv python install "${TEST_PYTHON_VERSION}"
+          uv venv --python "${TEST_PYTHON_VERSION}" .test-direct-venv
+          uv pip install \
+            --python .test-direct-venv/bin/python \
+            wheelhouse-direct/weasyprint-*.whl \
+            "pytest>=8" \
+            "pypdf>=6"
+
+      - name: Run direct wheel runtime test
+        shell: bash
+        run: |
+          LD_DEBUG=libs,files \
+          LD_DEBUG_OUTPUT=/tmp/weasyprint-direct-loader \
+          .test-direct-venv/bin/python -m pytest \
+            tests/runtime/test_direct_weasyprint_wheel.py \
+            -v \
+            -s
+
+      - name: Upload direct Ubuntu test PDF
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: direct-runtime-test-pdf-ubuntu-24-04
+          path: tests/runtime/_output_direct/*.pdf
+          if-no-files-found: ignore
+          retention-days: 14
+
+  test-direct-rocky:
+    name: Test direct WeasyPrint wheel on Rocky Linux ${{ matrix.rocky }}
+    needs: linux-wheel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        rocky: ["8", "9"]
+
+    container:
+      image: rockylinux:${{ matrix.rocky }}
+
+    steps:
+      - name: Install runner prerequisites
+        shell: bash
+        run: |
+          dnf install -y findutils gzip tar dejavu-sans-fonts
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Download direct WeasyPrint Linux wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: direct-weasyprint-manylinux-2-28-x86-64
+          path: wheelhouse-direct
+
+      - name: Install uv
+        shell: bash
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "/root/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install only direct WeasyPrint wheel and test dependencies
+        shell: bash
+        run: |
+          export PATH="/root/.local/bin:${PATH}"
+          uv python install "${TEST_PYTHON_VERSION}"
+          uv venv --python "${TEST_PYTHON_VERSION}" .test-direct-venv
+          uv pip install \
+            --python .test-direct-venv/bin/python \
+            wheelhouse-direct/weasyprint-*.whl \
+            "pytest>=8" \
+            "pypdf>=6"
+
+      - name: Run direct wheel runtime test
+        shell: bash
+        run: |
+          .test-direct-venv/bin/python -m pytest \
+            tests/runtime/test_direct_weasyprint_wheel.py \
+            -v \
+            -s
+
+      - name: Upload direct Rocky test PDF
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: direct-runtime-test-pdf-rocky-${{ matrix.rocky }}
+          path: tests/runtime/_output_direct/*.pdf
+          if-no-files-found: ignore
+          retention-days: 14
+
+  test-direct-windows:
+    name: Test direct WeasyPrint wheel on Windows x86_64
+    needs: windows-wheel
+    runs-on: windows-2025
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Download direct WeasyPrint Windows wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: direct-weasyprint-windows-x86-64
+          path: wheelhouse-direct
+
+      - name: Install only direct WeasyPrint wheel and test dependencies
+        shell: pwsh
+        run: |
+          uv python install $env:TEST_PYTHON_VERSION
+          uv venv --python $env:TEST_PYTHON_VERSION .test-direct-venv
+
+          $wheel = Get-ChildItem wheelhouse-direct\weasyprint-*.whl | Select-Object -First 1
+          if ($null -eq $wheel) {
+            throw "No direct WeasyPrint Windows wheel found"
+          }
+
+          uv pip install `
+            --python .test-direct-venv\Scripts\python.exe `
+            $wheel.FullName `
+            "pytest>=8" `
+            "pypdf>=6"
+
+      - name: Run direct wheel runtime test
+        shell: pwsh
+        run: |
+          .test-direct-venv\Scripts\python.exe `
+            -m pytest `
+            tests\runtime\test_direct_weasyprint_wheel.py `
+            -v `
+            -s
+
+      - name: Upload direct Windows test PDF
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: direct-runtime-test-pdf-windows
+          path: tests/runtime/_output_direct/*.pdf
+          if-no-files-found: ignore
+          retention-days: 14
+
   test-summary:
     name: Wheel test summary
     if: always()
@@ -355,6 +602,9 @@ jobs:
       - test-ubuntu
       - test-rocky
       - test-windows
+      - test-direct-ubuntu
+      - test-direct-rocky
+      - test-direct-windows
     runs-on: ubuntu-24.04
 
     steps:
@@ -366,19 +616,28 @@ jobs:
           UBUNTU_RESULT: ${{ needs.test-ubuntu.result }}
           ROCKY_RESULT: ${{ needs.test-rocky.result }}
           WINDOWS_RESULT: ${{ needs.test-windows.result }}
+          DIRECT_UBUNTU_RESULT: ${{ needs.test-direct-ubuntu.result }}
+          DIRECT_ROCKY_RESULT: ${{ needs.test-direct-rocky.result }}
+          DIRECT_WINDOWS_RESULT: ${{ needs.test-direct-windows.result }}
         run: |
           printf '%-24s %s\n' "Linux wheel" "$LINUX_WHEEL_RESULT"
           printf '%-24s %s\n' "Windows wheel" "$WINDOWS_WHEEL_RESULT"
           printf '%-24s %s\n' "Ubuntu test" "$UBUNTU_RESULT"
           printf '%-24s %s\n' "Rocky tests" "$ROCKY_RESULT"
           printf '%-24s %s\n' "Windows test" "$WINDOWS_RESULT"
+          printf '%-24s %s\n' "Direct Ubuntu test" "$DIRECT_UBUNTU_RESULT"
+          printf '%-24s %s\n' "Direct Rocky tests" "$DIRECT_ROCKY_RESULT"
+          printf '%-24s %s\n' "Direct Windows test" "$DIRECT_WINDOWS_RESULT"
 
           for result in \
             "$LINUX_WHEEL_RESULT" \
             "$WINDOWS_WHEEL_RESULT" \
             "$UBUNTU_RESULT" \
             "$ROCKY_RESULT" \
-            "$WINDOWS_RESULT"
+            "$WINDOWS_RESULT" \
+            "$DIRECT_UBUNTU_RESULT" \
+            "$DIRECT_ROCKY_RESULT" \
+            "$DIRECT_WINDOWS_RESULT"
           do
             if [[ "$result" != "success" ]]; then
               exit 1

@@ -16,3 +16,10 @@ uv venv .test-venv --python 3.13
 uv pip install --python .test-venv/bin/python dist/*.whl weasyprint==69.0 pytest pypdf
 .test-venv/bin/python -m pytest tests/runtime/test_runtime.py -v -s
 ```
+
+## Direct WeasyPrint wheel
+
+`test_direct_weasyprint_wheel.py` installs and tests only the patched WeasyPrint wheel.
+It verifies that `procitec-weasyprint-libs` is not installed, that
+`weasyprintlibs_native` cannot be imported, and that the native libraries bundled
+inside the WeasyPrint package are used to build the same two-page test document.

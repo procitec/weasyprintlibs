@@ -6,7 +6,7 @@ import sys
 
 
 def test_pth_activates_native_runtime_before_weasyprint_import() -> None:
-    code = r'''
+    code = r"""
 import json
 import os
 
@@ -20,7 +20,7 @@ print(json.dumps({
     "pdf_header": pdf[:4].decode("ascii"),
     "pdf_size": len(pdf),
 }))
-'''
+"""
     result = subprocess.run(
         [sys.executable, "-c", code],
         check=True,

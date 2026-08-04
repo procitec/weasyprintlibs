@@ -59,9 +59,7 @@ def pkginfo_from_archive(path: Path) -> dict[str, str]:
 
                     extracted = archive.extractfile(member)
                     if extracted is None:
-                        raise RuntimeError(
-                            f"Could not extract .PKGINFO from archive: {path}"
-                        )
+                        raise RuntimeError(f"Could not extract .PKGINFO from archive: {path}")
 
                     content = extracted.read().decode(
                         "utf-8",
@@ -86,15 +84,13 @@ def pkginfo_from_archive(path: Path) -> dict[str, str]:
                         result.setdefault(key, value)
 
                     if not result:
-                        raise RuntimeError(
-                            f".PKGINFO is empty or invalid in archive: {path}"
-                        )
+                        raise RuntimeError(f".PKGINFO is empty or invalid in archive: {path}")
 
                     return result
 
-    raise RuntimeError(
-        f"Archive does not contain .PKGINFO: {path}"
-    )
+    raise RuntimeError(f"Archive does not contain .PKGINFO: {path}")
+
+
 def toml_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
@@ -201,8 +197,7 @@ def fetch_locked(config: dict[str, Any]) -> None:
         if actual != expected:
             destination.unlink(missing_ok=True)
             raise RuntimeError(
-                f"SHA-256 mismatch for {package['filename']}: "
-                f"expected {expected}, got {actual}"
+                f"SHA-256 mismatch for {package['filename']}: expected {expected}, got {actual}"
             )
 
 

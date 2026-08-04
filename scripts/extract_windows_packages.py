@@ -38,9 +38,7 @@ def main() -> None:
     for package in lock.get("package", []):
         archive = download_dir / package["filename"]
         if not archive.is_file():
-            raise RuntimeError(
-                f"Missing {archive}. Run fetch_windows_packages.py --locked first."
-            )
+            raise RuntimeError(f"Missing {archive}. Run fetch_windows_packages.py --locked first.")
         extract_archive(archive, destination)
 
 

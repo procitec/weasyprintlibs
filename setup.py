@@ -5,7 +5,6 @@ from setuptools import setup
 from setuptools.command.bdist_wheel import bdist_wheel
 from setuptools.command.install_lib import install_lib
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent
 PTH_SOURCE = PROJECT_ROOT / "src" / "procitec_weasyprint_libs.pth"
 PTH_NAME = "procitec_weasyprint_libs.pth"
