@@ -1,8 +1,8 @@
 UV ?= uv
 PLATFORM_TAG ?= manylinux_2_28_x86_64
-UV_RUN := $(UV) run
 
-.PHONY: sync lock fetch source-lock native-build stage wheel verify clean distclean
+UV_RUN := $(UV) run
+.PHONY: sync lock fetch source-lock native-build stage wheel verify verify-pth clean distclean
 
 sync:
 	$(UV) sync
@@ -25,9 +25,13 @@ stage:
 
 wheel: native-build stage
 	WHEEL_PLATFORM_TAG=$(PLATFORM_TAG) $(UV) build --wheel
+	$(UV_RUN) python scripts/verify_pth_wheel.py
 
 verify:
 	$(UV_RUN) python scripts/fetch_sources.py
+
+verify-pth:
+	$(UV_RUN) python scripts/verify_pth_wheel.py
 
 clean:
 	rm -rf _build dist src/weasyprintlibs_native/lib src/weasyprintlibs_native/bin src/weasyprintlibs_native/etc src/weasyprintlibs_native/share
@@ -51,3 +55,4 @@ windows-stage: windows-extract
 
 windows-wheel: windows-stage
 	WHEEL_PLATFORM_TAG=win_amd64 $(UV) build --wheel
+	$(UV_RUN) python scripts/verify_pth_wheel.py
