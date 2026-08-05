@@ -13,102 +13,87 @@ docker run --rm \
   -v "$PWD:/io" \
   -w /io \
   weasyprintlibs-manylinux \
-  make wheel
+  make wheel WEASYPRINT_VERSION=69.0
 ```
 
-`make wheel` performs the following steps:
+The build performs these steps:
 
-1. download and verify source archives;
-2. build the pinned native stack;
-3. stage runtime libraries and data;
-4. patch Linux runtime paths;
-5. build the platform wheel;
-6. verify the activation `.pth` file.
+1. download and verify the pinned native sources;
+2. build the native stack into `_build/prefix`;
+3. stage the redistributable runtime in `_build/runtime`;
+4. patch Linux RPATHs;
+5. download the selected upstream WeasyPrint wheel;
+6. inject the runtime loader and native payload;
+7. change the wheel version and platform metadata;
+8. regenerate `RECORD` and verify the completed wheel.
 
 Useful targets:
 
 ```text
-make sync          Create or update the uv environment
-make fetch         Download and verify native sources
-make source-lock   Record observed source checksums
-make native-build  Build the Linux native stack
-make stage         Stage package data and patch ELF paths
-make wheel         Build the complete wheel
-make local-test    Install and test the generated wheel locally
-make clean         Remove generated build output
-make distclean     Also remove environments and download caches
+make sync              Install all development dependency groups
+make fetch             Download and verify native sources
+make source-lock       Record observed source checksums
+make native-build      Build the Linux native stack
+make stage             Stage the Linux runtime and patch ELF RPATHs
+make wheel             Build the bundled WeasyPrint wheel
+make verify-wheel      Inspect an existing wheel in dist/
+make test-unit         Test build and patch logic without native compilation
+make local-test        Build, install and render the test document
+make local-test-wheel  Test an already built wheel
+make clean             Remove build and local-test output
+make distclean         Also remove environments and download caches
 ```
 
-The pinned native source configuration is stored in `config/libraries.toml`.
+## Windows
 
-## Windows wheel
-
-Normal Windows builds use the committed MSYS2 package lock and do not resolve packages again:
+Normal Windows builds use the committed MSYS2 package lock:
 
 ```powershell
-.\scripts\build_windows.ps1
+.\scripts\build_windows.ps1 -WeasyPrintVersion 69.0 -Profile x86_64
 ```
 
-Update the package closure only when intentionally changing the Windows native stack:
+Update the package closure only when intentionally changing the native stack:
 
 ```powershell
-uv sync
-uv run python scripts/fetch_windows_packages.py --update-lock
+uv run python scripts/fetch_windows_packages.py --profile x86_64 --update-lock
 ```
 
-Commit the resulting `config/windows-packages.lock.toml`.
+## macOS
 
-## Runtime tests
-
-The runtime tests install the generated wheel into a clean environment, install WeasyPrint and render a PDF without manually calling `activate()`.
-
-GitHub Actions test:
-
-- Ubuntu 24.04;
-- Rocky Linux 8;
-- Rocky Linux 9;
-- Windows x86-64.
-- MacOS x86-64.
-- MacOS arm64.
-
-A successful build on the build image alone is insufficient. The Rocky tests are important because they reveal accidental dependencies on newer system libraries.
-
-## Runtime library configuration
-
-The source build versions remain in `config/libraries.toml`. Runtime entry
-libraries and loader aliases are maintained separately in
-`config/runtime-libraries.toml` because source-project names and installed
-binary names are not the same concept.
-
-After changing runtime names or macOS aliases, regenerate the checked-in module:
+The macOS build stages and relocates the Homebrew dependency closure before
+patching the upstream wheel:
 
 ```bash
-make runtime-config
+WEASYPRINT_VERSION=69.0 ./scripts/build_macos.sh
+```
+
+## Local integration test
+
+`make local-test` creates the wheel and then runs
+`scripts/test_patched_wheel.py`. The script creates `.test-venv`, installs only
+the generated WeasyPrint wheel plus the test dependencies, and executes
+`tests/runtime/test_direct_weasyprint_wheel.py`.
+
+The document test verifies:
+
+- no legacy `weasyprint-libs` distribution or `weasyprint_libs` module exists;
+- the embedded runtime loader activated during `import weasyprint`;
+- native files are present in `weasyprint/_weasyprint_libs`;
+- the bundled/local wheel metadata is consistent;
+- HarfBuzz subset is included;
+- PDF generation uses the normal subsetting path, not `full_fonts=True`;
+- the resulting two-page PDF contains the expected text;
+- on Linux, Pango, HarfBuzz, Fontconfig and FreeType are not loaded from system paths.
+
+## Runtime configuration
+
+Runtime entry libraries and macOS CFFI aliases are maintained in
+`config/runtime-libraries.toml`. The Python configuration module is no longer
+checked into the repository. It is rendered directly into the target
+WeasyPrint wheel by `scripts/patch_weasyprint_wheel.py`.
+
+Validate the configuration with:
+
+```bash
 make runtime-config-check
 ```
-
-`make check` includes the non-modifying generated-file check.
-
-## Windows build profiles
-
-Windows package sources are grouped into profiles in
-`config/windows-packages.toml`. The current default and release profile is
-`x86_64`:
-
-```powershell
-.\scripts\build_windows.ps1 -Profile x86_64
-```
-
-The scripts accept a profile consistently during lock generation, download,
-extraction, staging and wheel tagging:
-
-```powershell
-uv run python scripts/fetch_windows_packages.py `
-  --profile x86_64 `
-  --update-lock
-```
-
-An `arm64` profile is prepared with the MSYS2 `clangarm64` package names and the
-`win_arm64` wheel tag. It is not part of the release matrix yet. Before enabling
-it, generate and commit `config/windows-packages-arm64.lock.toml`, build the
-runtime, and execute the complete PDF smoke test on native Windows ARM64.

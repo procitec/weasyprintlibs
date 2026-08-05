@@ -1,1 +1,0 @@
-import weasyprint_libs; weasyprint_libs.activate()

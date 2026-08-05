@@ -1,8 +1,10 @@
-# WeasyPrint native libraries
+# Bundled WeasyPrint wheels
 
-Platform wheels containing the native libraries required by WeasyPrint.
-
-The package installs a `.pth` file that activates the bundled runtime automatically when Python starts. Applications can therefore use WeasyPrint normally without calling a separate loader function.
+This repository builds platform-specific `weasyprint` wheels that contain the
+native Pango, HarfBuzz, Fontconfig, FreeType and Cairo runtime required by
+WeasyPrint.
+Importing `weasyprint` activates the runtime embedded below
+`weasyprint/_weasyprint_libs` before WeasyPrint loads its native dependencies.
 
 ## Supported wheels
 
@@ -13,77 +15,65 @@ The package installs a `.pth` file that activates the bundled runtime automatica
 | macOS Apple Silicon | `macosx_11_0_arm64` | Relocated Homebrew runtime |
 | macOS Intel | `macosx_11_0_x86_64` | Relocated Homebrew runtime |
 
-The Linux baseline targets glibc 2.28 and newer systems, including RHEL/Rocky Linux 8 and later.
+The generated version uses a PEP 440 local version identifier, for example:
+
+```text
+weasyprint-69.0+bundled.26.1.1-py3-none-manylinux_2_28_x86_64.whl
+```
 
 ## Build
 
 Linux:
 
 ```bash
-make wheel
+make wheel WEASYPRINT_VERSION=69.0
 ```
 
 Windows:
 
 ```powershell
-.\scripts\build_windows.ps1
+.\scripts\build_windows.ps1 -WeasyPrintVersion 69.0
 ```
 
 macOS:
 
 ```bash
-./scripts/build_macos.sh
+WEASYPRINT_VERSION=69.0 ./scripts/build_macos.sh
 ```
 
 Generated wheels are written to `dist/`.
 
-## Code quality
+## Local tests
 
-Format all Python files locally:
-
-```bash
-make format
-```
-
-Run the same non-modifying format and lint checks as GitHub Actions:
+Fast source and build-logic tests:
 
 ```bash
 make check
 ```
 
-`make check` executes `ruff format --check .` followed by `ruff check .`. The dedicated code-quality workflow runs this target for pushes to `main`, pull requests and manual dispatches.
-
-To create a WeasyPrint wheel with the native runtime embedded directly:
-
-```bash
-make patched-wheel WEASYPRINT_VERSION=69.0
-```
-
-On Windows:
-
-```powershell
-.\scripts\build_patched_weasyprint_windows.ps1 -WeasyPrintVersion 69.0
-```
-
-## Test locally
+Build the complete Linux wheel, install it into a clean virtual environment and
+render the test document without `full_fonts=True`:
 
 ```bash
 make local-test
 ```
 
+Test an already built wheel without rebuilding the native stack:
+
+```bash
+make local-test-wheel
+```
+
 On Windows:
 
 ```powershell
-.\scripts\test_local.ps1
+.\scripts\test_local.ps1 -WeasyPrintVersion 69.0
 ```
-
-The complete platform matrix is tested by GitHub Actions on Ubuntu, Rocky Linux 8/9 and Windows.
 
 ## Documentation
 
-- [Installation and use](docs/usage.md)
 - [Build and test workflow](docs/build.md)
-- [Directly patched WeasyPrint wheel](docs/direct-weasyprint-wheel.md)
+- [Wheel layout and patching](docs/weasyprint-wheel.md)
 - [Runtime activation](docs/runtime.md)
 - [macOS wheels](docs/macos.md)
 - [Licensing and redistribution](docs/licensing.md)
@@ -92,5 +82,5 @@ The complete platform matrix is tested by GitHub Actions on Ubuntu, Rocky Linux 
 ## License
 
 The project-specific Python and build code is licensed under the [MIT License](LICENSE).
-
-The wheel also redistributes third-party native libraries under their respective licenses. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md). The MIT license of this repository does not replace those licenses.
+Bundled third-party libraries retain their respective licenses; see
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

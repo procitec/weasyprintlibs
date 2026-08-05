@@ -11,6 +11,7 @@ preload = [
     "libfontconfig-1.dll",
     "libfreetype-6.dll",
     "libharfbuzz-0.dll",
+    "libharfbuzz-subset-0.dll",
     "libcairo-2.dll",
     "libpango-1.0-0.dll",
     "libpangoft2-1.0-0.dll",
@@ -27,6 +28,7 @@ preload = [
     "libfontconfig.so.1",
     "libfreetype.so.6",
     "libharfbuzz.so.0",
+    "libharfbuzz-subset.so.0",
     "libcairo.so.2",
     "libpango-1.0.so.0",
     "libpangoft2-1.0.so.0",
@@ -39,6 +41,7 @@ preload = [
     "libgobject-2.0.0.dylib",
     "libpango-1.0.0.dylib",
     "libharfbuzz.0.dylib",
+    "libharfbuzz-subset.0.dylib",
     "libfontconfig.1.dylib",
     "libpangoft2-1.0.0.dylib",
 ]
@@ -50,6 +53,7 @@ seed_patterns = [
     "libfontconfig*.dylib",
     "libfreetype*.dylib",
     "libharfbuzz*.dylib",
+    "libharfbuzz-subset*.dylib",
 ]
 
 [macos.aliases]
@@ -73,6 +77,13 @@ seed_patterns = [
 "libharfbuzz.so.0" = "libharfbuzz.0.dylib"
 "libharfbuzz.0.dylib" = "libharfbuzz.0.dylib"
 "libharfbuzz-0.dll" = "libharfbuzz.0.dylib"
+
+"libharfbuzz-subset-0" = "libharfbuzz-subset.0.dylib"
+"harfbuzz-subset" = "libharfbuzz-subset.0.dylib"
+"harfbuzz-subset-0.0" = "libharfbuzz-subset.0.dylib"
+"libharfbuzz-subset.so.0" = "libharfbuzz-subset.0.dylib"
+"libharfbuzz-subset.0.dylib" = "libharfbuzz-subset.0.dylib"
+"libharfbuzz-subset-0.dll" = "libharfbuzz-subset.0.dylib"
 
 "libfontconfig-1" = "libfontconfig.1.dylib"
 "fontconfig-1" = "libfontconfig.1.dylib"

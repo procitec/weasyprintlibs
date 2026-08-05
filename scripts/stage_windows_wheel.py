@@ -4,12 +4,12 @@ import argparse
 import shutil
 from pathlib import Path
 
-from runtime_config import generate
+from runtime_config import load_runtime_config
 from verify_runtime_payload import verify_payload
 from windows_config import load_windows_profile
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_ROOT = ROOT / "src" / "weasyprint_libs"
+RUNTIME_ROOT = ROOT / "_build" / "runtime"
 
 
 def reset(path: Path) -> None:
@@ -27,17 +27,17 @@ def main() -> None:
     parser.add_argument("--profile")
     args = parser.parse_args()
 
-    generate(check=True)
+    load_runtime_config()
     profile = load_windows_profile(args.profile)
     msys_root = ROOT / profile["extract_dir"] / profile["prefix"]
     bin_source = msys_root / "bin"
     if not bin_source.is_dir():
         raise RuntimeError(f"Missing extracted MSYS2 prefix: {msys_root}")
 
-    bin_destination = PACKAGE_ROOT / "bin"
-    etc_destination = PACKAGE_ROOT / "etc"
-    share_destination = PACKAGE_ROOT / "share"
-    lib_destination = PACKAGE_ROOT / "lib"
+    bin_destination = RUNTIME_ROOT / "bin"
+    etc_destination = RUNTIME_ROOT / "etc"
+    share_destination = RUNTIME_ROOT / "share"
+    lib_destination = RUNTIME_ROOT / "lib"
 
     for path in (bin_destination, etc_destination, share_destination, lib_destination):
         reset(path)
@@ -58,7 +58,7 @@ def main() -> None:
     copy_tree(msys_root / "share" / "glib-2.0", share_destination / "glib-2.0")
 
     required = verify_payload(
-        PACKAGE_ROOT,
+        RUNTIME_ROOT,
         "windows",
         architecture=profile["architecture"],
     )

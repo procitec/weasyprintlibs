@@ -120,12 +120,9 @@ wheels = [
 ]
 
 [[package]]
-name = "weasyprint-libs"
+name = "weasyprint-bundled-builder"
 version = "26.1.1"
 source = { virtual = "." }
-dependencies = [
-    { name = "cffi" },
-]
 
 [package.dev-dependencies]
 native-build = [
@@ -133,9 +130,6 @@ native-build = [
     { name = "ninja" },
     { name = "zstandard" },
 ]
-
-[package.metadata]
-requires-dist = [{ name = "cffi", specifier = ">=1.15.1" }]
 
 [package.metadata.requires-dev]
 native-build = [

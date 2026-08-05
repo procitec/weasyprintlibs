@@ -1,4 +1,5 @@
 param(
+    [string]$WeasyPrintVersion = "69.0",
     [ValidateSet("x86_64", "arm64")]
     [string]$Profile = "x86_64"
 )
@@ -15,5 +16,8 @@ $platformTag = uv run python scripts/windows_config.py `
     --profile $Profile `
     --field platform_tag
 
-$env:WHEEL_PLATFORM_TAG = $platformTag.Trim()
-uv build --wheel
+Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
+uv run python scripts/patch_weasyprint_wheel.py `
+    --version $WeasyPrintVersion `
+    --platform-tag $platformTag.Trim()
+uv run python scripts/verify_patched_weasyprint_wheel.py dist

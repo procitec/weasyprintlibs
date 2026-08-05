@@ -1,5 +1,6 @@
 .venv/
 .uv-cache/
+.pytest_cache/
 _build/
 build/
 dist/
@@ -9,15 +10,4 @@ downloads/weasyprint/
 *.egg-info/
 __pycache__/
 *.py[cod]
-# generated
-*.egg-info/
-
-
-# Generated wheel payload
-src/weasyprint_libs/lib/
-src/weasyprint_libs/bin/
-src/weasyprint_libs/etc/
-src/weasyprint_libs/share/
-
-# Future Windows ARM64 package cache
-downloads/windows-arm64/
+tests/**/_output_direct/

@@ -6,7 +6,6 @@ import tarfile
 from pathlib import Path
 
 import zstandard
-
 from windows_config import load_toml, load_windows_profile
 
 ROOT = Path(__file__).resolve().parents[1]

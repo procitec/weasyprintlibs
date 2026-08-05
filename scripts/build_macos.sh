@@ -24,6 +24,8 @@ case "$(uname -m)" in
     ;;
 esac
 
+weasyprint_version="${WEASYPRINT_VERSION:-${1:-69.0}}"
+
 command -v brew >/dev/null || {
   echo "Homebrew is required to build the macOS runtime." >&2
   exit 1
@@ -34,7 +36,9 @@ uv sync --frozen
 uv run python scripts/runtime_config.py --check
 uv run python scripts/stage_macos_wheel.py
 rm -rf dist
-WHEEL_PLATFORM_TAG="${platform_tag}" uv build --wheel
-uv run python scripts/verify_pth_wheel.py
-wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+uv run python scripts/patch_weasyprint_wheel.py \
+  --version "${weasyprint_version}" \
+  --platform-tag "${platform_tag}"
+uv run python scripts/verify_patched_weasyprint_wheel.py dist
+wheel="$(find dist -maxdepth 1 -name 'weasyprint-*.whl' -print -quit)"
 uv run python scripts/verify_macos_wheel.py "${wheel}" --arch "${expected_arch}"

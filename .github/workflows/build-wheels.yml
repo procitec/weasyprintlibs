@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       weasyprint_version:
-        description: WeasyPrint version used for runtime tests
+        description: Upstream WeasyPrint version
         required: true
         default: "69.0"
         type: string
@@ -25,113 +25,35 @@ env:
 
 jobs:
   linux-wheel:
-    name: Linux manylinux_2_28 x86_64 wheel
+    name: Linux manylinux_2_28 x86_64
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
+      - uses: actions/checkout@v6
       - name: Require committed uv lock
-        shell: bash
-        run: |
-          test -f uv.lock || {
-            echo "uv.lock is missing. Run the Update lockfiles workflow and commit its result." >&2
-            exit 1
-          }
-
-      - name: Build Manylinux image
-        shell: bash
+        run: test -f uv.lock
+      - name: Build manylinux image
         run: |
           docker build \
             --file containers/Dockerfile.manylinux_2_28 \
-            --tag weasyprintlibs-manylinux:ci \
+            --tag weasyprint-bundled-manylinux:ci \
             .
-
-      - name: Build Linux wheel in container
-        shell: bash
-        run: |
-          docker run --rm \
-            --volume "${GITHUB_WORKSPACE}:/io" \
-            --workdir /io \
-            --env UV_CACHE_DIR=/io/.uv-cache \
-            weasyprintlibs-manylinux:ci \
-            bash -lc 'uv sync --frozen && make wheel'
-
-      - name: Show generated Linux wheel
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import zipfile
-          from pathlib import Path
-
-          wheels = list(Path("dist").glob("*.whl"))
-          if len(wheels) != 1:
-              raise SystemExit(f"Expected exactly one wheel, got {wheels}")
-
-          with zipfile.ZipFile(wheels[0]) as archive:
-              libraries = [
-                  name
-                  for name in archive.namelist()
-                  if name.endswith(".so") or ".so." in name
-              ]
-
-          if not libraries:
-              raise SystemExit("Linux wheel contains no shared libraries")
-
-          print(f"Wheel contains {len(libraries)} Linux shared libraries")
-          PY
-
-      - name: Upload Linux wheel
-        uses: actions/upload-artifact@v7
-        with:
-          name: wheel-manylinux-2-28-x86-64
-          path: dist/*.whl
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Build direct WeasyPrint Linux wheel
-        shell: bash
+      - name: Build bundled WeasyPrint wheel
         env:
           INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
         run: |
-          weasyprint_version="${INPUT_WEASYPRINT_VERSION:-${DEFAULT_WEASYPRINT_VERSION}}"
-          rm -rf dist-direct
+          version="${INPUT_WEASYPRINT_VERSION:-${DEFAULT_WEASYPRINT_VERSION}}"
           docker run --rm \
             --volume "${GITHUB_WORKSPACE}:/io" \
             --workdir /io \
             --env UV_CACHE_DIR=/io/.uv-cache \
-            --env WEASYPRINT_VERSION="${weasyprint_version}" \
-            weasyprintlibs-manylinux:ci \
-            bash -lc 'uv run python scripts/patch_weasyprint_wheel.py --version "${WEASYPRINT_VERSION}" --platform-tag manylinux_2_28_x86_64 --output-dir dist-direct'
-
-      - name: Verify direct WeasyPrint Linux wheel
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import zipfile
-          from pathlib import Path
-
-          wheels = list(Path("dist-direct").glob("weasyprint-*.whl"))
-          if len(wheels) != 1:
-              raise SystemExit(f"Expected exactly one direct WeasyPrint wheel, got {wheels}")
-
-          with zipfile.ZipFile(wheels[0]) as archive:
-              names = archive.namelist()
-
-          assert "weasyprint/_weasyprint_libs_loader.py" in names
-          assert "weasyprint/_weasyprint_libs_config.py" in names
-          assert any(name.startswith("weasyprint/_weasyprint_libs/lib/") for name in names)
-          assert not any(name.startswith("weasyprintlibs_native/") for name in names)
-          print(wheels[0])
-          PY
-
-      - name: Upload direct WeasyPrint Linux wheel
-        uses: actions/upload-artifact@v7
+            --env WEASYPRINT_VERSION="${version}" \
+            weasyprint-bundled-manylinux:ci \
+            bash -lc 'uv sync --frozen && make patched-wheel WEASYPRINT_VERSION="${WEASYPRINT_VERSION}"'
+      - uses: actions/upload-artifact@v7
         with:
-          name: direct-weasyprint-manylinux-2-28-x86-64
-          path: dist-direct/weasyprint-*.whl
+          name: weasyprint-manylinux-2-28-x86-64
+          path: dist/weasyprint-*.whl
           if-no-files-found: error
           retention-days: 14
 
@@ -139,95 +61,33 @@ jobs:
     name: Windows x86_64
     runs-on: windows-2025
     timeout-minutes: 45
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
+      - uses: actions/checkout@v6
       - name: Require committed lockfiles
         shell: pwsh
         run: |
-          if (-not (Test-Path uv.lock)) {
-            throw "uv.lock is missing. Run the Update lockfiles workflow and commit its result."
-          }
-
+          if (-not (Test-Path uv.lock)) { throw "uv.lock is missing" }
           if (-not (Test-Path config/windows-packages.lock.toml)) {
-            throw "config/windows-packages.lock.toml is missing. Run the Update lockfiles workflow and commit its result."
+            throw "config/windows-packages.lock.toml is missing"
           }
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-
-      - name: Build Windows wheel
-        shell: pwsh
-        run: ./scripts/build_windows.ps1
-
-      - name: Show generated Windows wheel
-        shell: pwsh
-        run: |
-          $wheels = @(Get-ChildItem dist/*.whl)
-          if ($wheels.Count -ne 1) {
-            throw "Expected exactly one wheel, got $($wheels.Count)"
-          }
-          uv run python -c "import pathlib, zipfile; p=next(pathlib.Path('dist').glob('*.whl')); z=zipfile.ZipFile(p); dlls=[n for n in z.namelist() if n.lower().endswith('.dll')]; print(f'{p} contains {len(dlls)} DLLs'); assert dlls"
-
-      - name: Upload Windows wheel
-        uses: actions/upload-artifact@v7
-        with:
-          name: wheel-windows-x86-64
-          path: dist/*.whl
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Build direct WeasyPrint Windows wheel
+      - name: Build bundled WeasyPrint wheel
         shell: pwsh
         env:
           INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
         run: |
-          $weasyprintVersion = $env:INPUT_WEASYPRINT_VERSION
-          if ([string]::IsNullOrWhiteSpace($weasyprintVersion)) {
-            $weasyprintVersion = $env:DEFAULT_WEASYPRINT_VERSION
+          $version = $env:INPUT_WEASYPRINT_VERSION
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            $version = $env:DEFAULT_WEASYPRINT_VERSION
           }
-
-          Remove-Item -Recurse -Force dist-direct -ErrorAction SilentlyContinue
-          $platformTag = uv run python scripts/windows_config.py `
-            --profile x86_64 `
-            --field platform_tag
-
-          uv run python scripts/patch_weasyprint_wheel.py `
-            --version $weasyprintVersion `
-            --platform-tag $platformTag.Trim() `
-            --output-dir dist-direct
-
-      - name: Verify direct WeasyPrint Windows wheel
-        shell: pwsh
-        run: |
-          $wheels = @(Get-ChildItem dist-direct/weasyprint-*.whl)
-          if ($wheels.Count -ne 1) {
-            throw "Expected exactly one direct WeasyPrint wheel, got $($wheels.Count)"
-          }
-          $verifyScript = @'
-          import pathlib
-          import zipfile
-
-          wheel = next(pathlib.Path("dist-direct").glob("weasyprint-*.whl"))
-          names = zipfile.ZipFile(wheel).namelist()
-          assert "weasyprint/_weasyprint_libs_loader.py" in names
-          assert "weasyprint/_weasyprint_libs_config.py" in names
-          assert any(name.startswith("weasyprint/_weasyprint_libs/bin/") for name in names)
-          assert not any(name.startswith("weasyprintlibs_native/") for name in names)
-          print(wheel)
-          '@
-          uv run python -c $verifyScript
-
-      - name: Upload direct WeasyPrint Windows wheel
-        uses: actions/upload-artifact@v7
+          ./scripts/build_windows.ps1 -WeasyPrintVersion $version -Profile x86_64
+      - uses: actions/upload-artifact@v7
         with:
-          name: direct-weasyprint-windows-x86-64
-          path: dist-direct/weasyprint-*.whl
+          name: weasyprint-windows-x86-64
+          path: dist/weasyprint-*.whl
           if-no-files-found: error
           retention-days: 14
 
@@ -235,80 +95,34 @@ jobs:
     name: macOS ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
-
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: macos-15
             arch: arm64
-            platform_tag: macosx_11_0_arm64
           - runner: macos-15-intel
             arch: x86_64
-            platform_tag: macosx_11_0_x86_64
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Require committed uv lock
-        shell: bash
-        run: |
-          test -f uv.lock || {
-            echo "uv.lock is missing. Run the Update lockfiles workflow and commit it." >&2
-            exit 1
-          }
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-
       - name: Install Homebrew build libraries
-        shell: bash
         run: |
           brew untap aws/tap || true
           brew install pango
-
-      - name: Build macOS wheels
-        shell: bash
+      - name: Build bundled WeasyPrint wheel
         env:
-          WHEEL_PLATFORM_TAG: ${{ matrix.platform_tag }}
           INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
         run: |
-          weasyprint_version="${INPUT_WEASYPRINT_VERSION:-${DEFAULT_WEASYPRINT_VERSION}}"
-          uv sync --frozen
-          uv run python scripts/stage_macos_wheel.py
-
-          rm -rf dist dist-direct
-          uv build --wheel
-          uv run python scripts/verify_pth_wheel.py
-          uv run python scripts/verify_macos_wheel.py \
-            "$(find dist -maxdepth 1 -name '*.whl' -print -quit)" \
-            --arch "${{ matrix.arch }}"
-
-          uv run python scripts/patch_weasyprint_wheel.py \
-            --version "${weasyprint_version}" \
-            --platform-tag "${WHEEL_PLATFORM_TAG}" \
-            --output-dir dist-direct
-          uv run python scripts/verify_macos_wheel.py \
-            "$(find dist-direct -maxdepth 1 -name 'weasyprint-*.whl' -print -quit)" \
-            --arch "${{ matrix.arch }}"
-
-      - name: Upload macOS runtime wheel
-        uses: actions/upload-artifact@v7
+          export WEASYPRINT_VERSION="${INPUT_WEASYPRINT_VERSION:-${DEFAULT_WEASYPRINT_VERSION}}"
+          ./scripts/build_macos.sh
+      - uses: actions/upload-artifact@v7
         with:
-          name: wheel-macos-${{ matrix.arch }}
-          path: dist/*.whl
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload direct WeasyPrint macOS wheel
-        uses: actions/upload-artifact@v7
-        with:
-          name: direct-weasyprint-macos-${{ matrix.arch }}
-          path: dist-direct/weasyprint-*.whl
+          name: weasyprint-macos-${{ matrix.arch }}
+          path: dist/weasyprint-*.whl
           if-no-files-found: error
           retention-days: 14
 
@@ -317,60 +131,29 @@ jobs:
     needs: linux-wheel
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: false
-
-      - name: Download Linux wheel
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8
         with:
-          name: wheel-manylinux-2-28-x86-64
+          name: weasyprint-manylinux-2-28-x86-64
           path: wheelhouse
-
-      - name: Install wheel and test dependencies
-        shell: bash
-        env:
-          INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
+      - name: Install and test wheel
         run: |
-          weasyprint_version="${INPUT_WEASYPRINT_VERSION:-${DEFAULT_WEASYPRINT_VERSION}}"
-
           uv python install "${TEST_PYTHON_VERSION}"
           uv venv --python "${TEST_PYTHON_VERSION}" .test-venv
-
-          uv pip install \
-            --python .test-venv/bin/python \
-            wheelhouse/*.whl \
-            "weasyprint==${weasyprint_version}" \
-            "pytest>=8" \
-            "pypdf>=6"
-
-      - name: Run runtime tests
-        shell: bash
-        run: |
-          LD_DEBUG=libs,files \
-          LD_DEBUG_OUTPUT=/tmp/weasyprint-loader \
+          uv pip install --python .test-venv/bin/python \
+            wheelhouse/weasyprint-*.whl "pytest>=8,<9" "pypdf>=6,<7"
           .test-venv/bin/python -m pytest \
-            tests/runtime/test_runtime.py \
-            -v \
-            -s
-
-          grep -E \
-          'lib(pango|pangocairo|pangoft2|harfbuzz|fontconfig|freetype|glib|gobject|gio|ffi|cairo)' \
-          /tmp/weasyprint-loader.* |
-          sort -u
-
-      - name: Upload Ubuntu test PDF
+            tests/ -v -s
+      - name: Upload test PDF
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: runtime-test-pdf-ubuntu-24-04
-          path: tests/runtime/_output/*.pdf
+          name: runtime-test-pdf-ubuntu
+          path: tests/**/*.pdf
           if-no-files-found: ignore
           retention-days: 14
 
@@ -379,79 +162,39 @@ jobs:
     needs: linux-wheel
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-
     strategy:
       fail-fast: false
       matrix:
         rocky: ["8", "9"]
-
     container:
       image: rockylinux:${{ matrix.rocky }}
-
     steps:
-      - name: Install runner prerequisites
-        shell: bash
-        run: |
-          dnf install -y \
-            findutils \
-            gzip \
-            tar \
-            dejavu-sans-fonts
-
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Download Linux wheel
-        uses: actions/download-artifact@v8
+      - name: Install prerequisites
+        run: dnf install -y ca-certificates curl tar gzip findutils dejavu-sans-fonts
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
-          name: wheel-manylinux-2-28-x86-64
+          name: weasyprint-manylinux-2-28-x86-64
           path: wheelhouse
-
       - name: Install uv
-        shell: bash
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "/root/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Install wheel and test dependencies
-        shell: bash
-        env:
-          INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
+      - name: Install and test wheel
         run: |
           export PATH="/root/.local/bin:${PATH}"
-          weasyprint_version="${INPUT_WEASYPRINT_VERSION:-${DEFAULT_WEASYPRINT_VERSION}}"
-
           uv python install "${TEST_PYTHON_VERSION}"
           uv venv --python "${TEST_PYTHON_VERSION}" .test-venv
-
-          uv pip install \
-            --python .test-venv/bin/python \
-            wheelhouse/*.whl \
-            "weasyprint==${weasyprint_version}" \
-            "pytest>=8" \
-            "pypdf>=6"
-
-      - name: Run runtime tests
-        shell: bash
-        run: |
-          LD_DEBUG=libs,files \
-          LD_DEBUG_OUTPUT=/tmp/weasyprint-loader \
+          uv pip install --python .test-venv/bin/python \
+            wheelhouse/weasyprint-*.whl "pytest>=8,<9" "pypdf>=6,<7"
           .test-venv/bin/python -m pytest \
-            tests/runtime/test_runtime.py \
-            -v \
-            -s
-
-          grep -E \
-          'lib(pango|pangocairo|pangoft2|harfbuzz|fontconfig|freetype|glib|gobject|gio|ffi|cairo)' \
-          /tmp/weasyprint-loader.* |
-          sort -u
-
-      - name: Upload Rocky test PDF
+            tests/ -v -s
+      - name: Upload test PDF
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: runtime-test-pdf-rocky-${{ matrix.rocky }}
-          path: tests/runtime/_output/*.pdf
+          path: tests/**/*.pdf
           if-no-files-found: ignore
           retention-days: 14
 
@@ -460,62 +203,31 @@ jobs:
     needs: windows-wheel
     runs-on: windows-2025
     timeout-minutes: 20
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: false
-
-      - name: Download Windows wheel
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8
         with:
-          name: wheel-windows-x86-64
+          name: weasyprint-windows-x86-64
           path: wheelhouse
-
-      - name: Install wheel and test dependencies
+      - name: Install and test wheel
         shell: pwsh
-        env:
-          INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
         run: |
-          $weasyprintVersion = $env:INPUT_WEASYPRINT_VERSION
-          if ([string]::IsNullOrWhiteSpace($weasyprintVersion)) {
-            $weasyprintVersion = $env:DEFAULT_WEASYPRINT_VERSION
-          }
-
           uv python install $env:TEST_PYTHON_VERSION
           uv venv --python $env:TEST_PYTHON_VERSION .test-venv
-
-          $wheel = Get-ChildItem wheelhouse\*.whl | Select-Object -First 1
-          if ($null -eq $wheel) {
-            throw "No Windows wheel found in wheelhouse"
-          }
-
-          uv pip install `
-            --python .test-venv\Scripts\python.exe `
-            $wheel.FullName `
-            "weasyprint==$weasyprintVersion" `
-            "pytest>=8" `
-            "pypdf>=6"
-
-      - name: Run runtime tests
-        shell: pwsh
-        run: |
-          .test-venv\Scripts\python.exe `
-            -m pytest `
-            tests\runtime\test_runtime.py `
-            -v `
-            -s
-
-      - name: Upload Windows test PDF
+          $wheel = Get-ChildItem wheelhouse\weasyprint-*.whl | Select-Object -First 1
+          uv pip install --python .test-venv\Scripts\python.exe `
+            $wheel.FullName "pytest>=8,<9" "pypdf>=6,<7"
+          .test-venv\Scripts\python.exe -m pytest `
+            tests -v -s
+      - name: Upload test PDF
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: runtime-test-pdf-windows
-          path: tests/runtime/_output/*.pdf
+          path: tests/**/*.pdf
           if-no-files-found: ignore
           retention-days: 14
 
@@ -524,7 +236,6 @@ jobs:
     needs: macos-wheel
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
-
     strategy:
       fail-fast: false
       matrix:
@@ -533,295 +244,34 @@ jobs:
             arch: arm64
           - runner: macos-15-intel
             arch: x86_64
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: false
-
-      - name: Download macOS runtime wheel
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8
         with:
-          name: wheel-macos-${{ matrix.arch }}
+          name: weasyprint-macos-${{ matrix.arch }}
           path: wheelhouse
-
-      - name: Install clean test environment
-        shell: bash
-        env:
-          INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
+      - name: Install wheel
         run: |
-          weasyprint_version="${INPUT_WEASYPRINT_VERSION:-${DEFAULT_WEASYPRINT_VERSION}}"
           uv python install "${TEST_PYTHON_VERSION}"
           uv venv --python "${TEST_PYTHON_VERSION}" .test-venv
-          uv pip install \
-            --python .test-venv/bin/python \
-            wheelhouse/*.whl \
-            "weasyprint==${weasyprint_version}" \
-            "pytest>=8" \
-            "pypdf>=6"
-
-      - name: Hide Homebrew runtime
-        shell: bash
+          uv pip install --python .test-venv/bin/python \
+            wheelhouse/weasyprint-*.whl "pytest>=8,<9" "pypdf>=6,<7"
+      - name: Hide Homebrew runtime and test wheel
         run: |
           for formula in pango cairo fontconfig glib harfbuzz freetype; do
             brew unlink "${formula}" >/dev/null 2>&1 || true
           done
-
-      - name: Run macOS runtime tests
-        shell: bash
-        run: |
           .test-venv/bin/python -m pytest \
-            tests/runtime/test_runtime.py \
-            tests/runtime/test_pth_activation.py \
-            -v \
-            -s
-
-      - name: Upload macOS test PDF
+            tests/ -v -s
+      - name: Upload test PDF
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: runtime-test-pdf-macos-${{ matrix.arch }}
-          path: tests/runtime/_output/*.pdf
-          if-no-files-found: ignore
-          retention-days: 14
-
-  test-direct-macos:
-    name: Test direct WeasyPrint wheel on macOS ${{ matrix.arch }}
-    needs: macos-wheel
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 25
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x86_64
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: false
-
-      - name: Download direct macOS wheel
-        uses: actions/download-artifact@v8
-        with:
-          name: direct-weasyprint-macos-${{ matrix.arch }}
-          path: wheelhouse-direct
-
-      - name: Install direct wheel
-        shell: bash
-        run: |
-          uv python install "${TEST_PYTHON_VERSION}"
-          uv venv --python "${TEST_PYTHON_VERSION}" .test-direct-venv
-          uv pip install \
-            --python .test-direct-venv/bin/python \
-            wheelhouse-direct/weasyprint-*.whl \
-            "pytest>=8" \
-            "pypdf>=6"
-
-      - name: Hide Homebrew runtime
-        shell: bash
-        run: |
-          for formula in pango cairo fontconfig glib harfbuzz freetype; do
-            brew unlink "${formula}" >/dev/null 2>&1 || true
-          done
-
-      - name: Run direct macOS runtime test
-        shell: bash
-        run: |
-          .test-direct-venv/bin/python -m pytest \
-            tests/runtime/test_direct_weasyprint_wheel.py \
-            -v \
-            -s
-
-      - name: Upload direct macOS test PDF
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: direct-runtime-test-pdf-macos-${{ matrix.arch }}
-          path: tests/runtime/_output_direct/*.pdf
-          if-no-files-found: ignore
-          retention-days: 14
-
-  test-direct-ubuntu:
-    name: Test direct WeasyPrint wheel on Ubuntu 24.04
-    needs: linux-wheel
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: false
-
-      - name: Download direct WeasyPrint Linux wheel
-        uses: actions/download-artifact@v8
-        with:
-          name: direct-weasyprint-manylinux-2-28-x86-64
-          path: wheelhouse-direct
-
-      - name: Install only direct WeasyPrint wheel and test dependencies
-        shell: bash
-        run: |
-          uv python install "${TEST_PYTHON_VERSION}"
-          uv venv --python "${TEST_PYTHON_VERSION}" .test-direct-venv
-          uv pip install \
-            --python .test-direct-venv/bin/python \
-            wheelhouse-direct/weasyprint-*.whl \
-            "pytest>=8" \
-            "pypdf>=6"
-
-      - name: Run direct wheel runtime test
-        shell: bash
-        run: |
-          LD_DEBUG=libs,files \
-          LD_DEBUG_OUTPUT=/tmp/weasyprint-direct-loader \
-          .test-direct-venv/bin/python -m pytest \
-            tests/runtime/test_direct_weasyprint_wheel.py \
-            -v \
-            -s
-
-      - name: Upload direct Ubuntu test PDF
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: direct-runtime-test-pdf-ubuntu-24-04
-          path: tests/runtime/_output_direct/*.pdf
-          if-no-files-found: ignore
-          retention-days: 14
-
-  test-direct-rocky:
-    name: Test direct WeasyPrint wheel on Rocky Linux ${{ matrix.rocky }}
-    needs: linux-wheel
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-
-    strategy:
-      fail-fast: false
-      matrix:
-        rocky: ["8", "9"]
-
-    container:
-      image: rockylinux:${{ matrix.rocky }}
-
-    steps:
-      - name: Install runner prerequisites
-        shell: bash
-        run: |
-          dnf install -y findutils gzip tar dejavu-sans-fonts
-
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Download direct WeasyPrint Linux wheel
-        uses: actions/download-artifact@v8
-        with:
-          name: direct-weasyprint-manylinux-2-28-x86-64
-          path: wheelhouse-direct
-
-      - name: Install uv
-        shell: bash
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "/root/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Install only direct WeasyPrint wheel and test dependencies
-        shell: bash
-        run: |
-          export PATH="/root/.local/bin:${PATH}"
-          uv python install "${TEST_PYTHON_VERSION}"
-          uv venv --python "${TEST_PYTHON_VERSION}" .test-direct-venv
-          uv pip install \
-            --python .test-direct-venv/bin/python \
-            wheelhouse-direct/weasyprint-*.whl \
-            "pytest>=8" \
-            "pypdf>=6"
-
-      - name: Run direct wheel runtime test
-        shell: bash
-        run: |
-          .test-direct-venv/bin/python -m pytest \
-            tests/runtime/test_direct_weasyprint_wheel.py \
-            -v \
-            -s
-
-      - name: Upload direct Rocky test PDF
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: direct-runtime-test-pdf-rocky-${{ matrix.rocky }}
-          path: tests/runtime/_output_direct/*.pdf
-          if-no-files-found: ignore
-          retention-days: 14
-
-  test-direct-windows:
-    name: Test direct WeasyPrint wheel on Windows x86_64
-    needs: windows-wheel
-    runs-on: windows-2025
-    timeout-minutes: 20
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: false
-
-      - name: Download direct WeasyPrint Windows wheel
-        uses: actions/download-artifact@v8
-        with:
-          name: direct-weasyprint-windows-x86-64
-          path: wheelhouse-direct
-
-      - name: Install only direct WeasyPrint wheel and test dependencies
-        shell: pwsh
-        run: |
-          uv python install $env:TEST_PYTHON_VERSION
-          uv venv --python $env:TEST_PYTHON_VERSION .test-direct-venv
-
-          $wheel = Get-ChildItem wheelhouse-direct\weasyprint-*.whl | Select-Object -First 1
-          if ($null -eq $wheel) {
-            throw "No direct WeasyPrint Windows wheel found"
-          }
-
-          uv pip install `
-            --python .test-direct-venv\Scripts\python.exe `
-            $wheel.FullName `
-            "pytest>=8" `
-            "pypdf>=6"
-
-      - name: Run direct wheel runtime test
-        shell: pwsh
-        run: |
-          .test-direct-venv\Scripts\python.exe `
-            -m pytest `
-            tests\runtime\test_direct_weasyprint_wheel.py `
-            -v `
-            -s
-
-      - name: Upload direct Windows test PDF
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: direct-runtime-test-pdf-windows
-          path: tests/runtime/_output_direct/*.pdf
+          path: tests/**/*.pdf
           if-no-files-found: ignore
           retention-days: 14
 
@@ -836,54 +286,20 @@ jobs:
       - test-rocky
       - test-windows
       - test-macos
-      - test-direct-ubuntu
-      - test-direct-rocky
-      - test-direct-windows
-      - test-direct-macos
     runs-on: ubuntu-24.04
-
     steps:
       - name: Require all builds and tests to pass
-        shell: bash
         env:
-          LINUX_WHEEL_RESULT: ${{ needs.linux-wheel.result }}
-          WINDOWS_WHEEL_RESULT: ${{ needs.windows-wheel.result }}
-          MACOS_WHEEL_RESULT: ${{ needs.macos-wheel.result }}
-          UBUNTU_RESULT: ${{ needs.test-ubuntu.result }}
-          ROCKY_RESULT: ${{ needs.test-rocky.result }}
-          WINDOWS_RESULT: ${{ needs.test-windows.result }}
-          MACOS_RESULT: ${{ needs.test-macos.result }}
-          DIRECT_UBUNTU_RESULT: ${{ needs.test-direct-ubuntu.result }}
-          DIRECT_ROCKY_RESULT: ${{ needs.test-direct-rocky.result }}
-          DIRECT_WINDOWS_RESULT: ${{ needs.test-direct-windows.result }}
-          DIRECT_MACOS_RESULT: ${{ needs.test-direct-macos.result }}
+          RESULTS: >-
+            ${{ needs.linux-wheel.result }}
+            ${{ needs.windows-wheel.result }}
+            ${{ needs.macos-wheel.result }}
+            ${{ needs.test-ubuntu.result }}
+            ${{ needs.test-rocky.result }}
+            ${{ needs.test-windows.result }}
+            ${{ needs.test-macos.result }}
         run: |
-          printf '%-24s %s\n' "Linux wheel" "$LINUX_WHEEL_RESULT"
-          printf '%-24s %s\n' "Windows wheel" "$WINDOWS_WHEEL_RESULT"
-          printf '%-24s %s\n' "macOS wheels" "$MACOS_WHEEL_RESULT"
-          printf '%-24s %s\n' "Ubuntu test" "$UBUNTU_RESULT"
-          printf '%-24s %s\n' "Rocky tests" "$ROCKY_RESULT"
-          printf '%-24s %s\n' "Windows test" "$WINDOWS_RESULT"
-          printf '%-24s %s\n' "macOS tests" "$MACOS_RESULT"
-          printf '%-24s %s\n' "Direct Ubuntu test" "$DIRECT_UBUNTU_RESULT"
-          printf '%-24s %s\n' "Direct Rocky tests" "$DIRECT_ROCKY_RESULT"
-          printf '%-24s %s\n' "Direct Windows test" "$DIRECT_WINDOWS_RESULT"
-          printf '%-24s %s\n' "Direct macOS tests" "$DIRECT_MACOS_RESULT"
-
-          for result in \
-            "$LINUX_WHEEL_RESULT" \
-            "$WINDOWS_WHEEL_RESULT" \
-            "$MACOS_WHEEL_RESULT" \
-            "$UBUNTU_RESULT" \
-            "$ROCKY_RESULT" \
-            "$WINDOWS_RESULT" \
-            "$MACOS_RESULT" \
-            "$DIRECT_UBUNTU_RESULT" \
-            "$DIRECT_ROCKY_RESULT" \
-            "$DIRECT_WINDOWS_RESULT" \
-            "$DIRECT_MACOS_RESULT"
-          do
-            if [[ "$result" != "success" ]]; then
-              exit 1
-            fi
+          echo "${RESULTS}"
+          for result in ${RESULTS}; do
+            test "${result}" = success
           done

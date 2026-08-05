@@ -12,7 +12,6 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 import zstandard
-
 from windows_config import load_toml, load_windows_profile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -174,9 +173,7 @@ def verify_lock_metadata(profile: dict[str, Any], lock: dict[str, Any], lock_pat
     ]
     recorded_profile = metadata.get("profile")
     if recorded_profile is not None and recorded_profile != profile["profile"]:
-        mismatches.append(
-            f"profile: {recorded_profile!r} != {profile['profile']!r}"
-        )
+        mismatches.append(f"profile: {recorded_profile!r} != {profile['profile']!r}")
     if mismatches:
         formatted = "\n".join(f"  - {item}" for item in mismatches)
         raise RuntimeError(

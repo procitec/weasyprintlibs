@@ -93,9 +93,7 @@ def _verify_architecture(platform: str, paths: list[Path], architecture: str) ->
         for path in paths:
             actual = _read_elf_machine(path)
             if actual != expected:
-                raise RuntimeError(
-                    f"{path.name} has ELF machine {actual}, expected {expected}"
-                )
+                raise RuntimeError(f"{path.name} has ELF machine {actual}, expected {expected}")
         return
 
     if platform == "macos":
@@ -130,7 +128,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Verify the staged native runtime against config/runtime-libraries.toml."
     )
-    parser.add_argument("--root", type=Path, default=Path("src/weasyprint_libs"))
+    parser.add_argument("--root", type=Path, default=Path("_build/runtime"))
     parser.add_argument("--platform", choices=("windows", "linux", "macos"), required=True)
     parser.add_argument("--architecture")
     args = parser.parse_args()

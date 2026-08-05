@@ -22,8 +22,7 @@ Equivalent Make targets are:
 ```bash
 brew install pango
 uv sync --frozen
-make macos-wheel
-make macos-patched-wheel WEASYPRINT_VERSION=69.0
+make macos-wheel WEASYPRINT_VERSION=69.0
 ```
 
 ## Staging process
@@ -32,7 +31,7 @@ make macos-patched-wheel WEASYPRINT_VERSION=69.0
 
 1. locate the Pango, Cairo, Fontconfig, FreeType and HarfBuzz seed libraries;
 2. read their Mach-O dependencies recursively with `otool -L`;
-3. copy every Homebrew dependency into `weasyprintlibs_native/lib`;
+3. copy every Homebrew dependency into `_build/runtime/lib`;
 4. replace Homebrew install names with `@loader_path/<name>`;
 5. set each bundled dylib ID to `@loader_path/<name>`;
 6. ad-hoc sign the modified dylibs;

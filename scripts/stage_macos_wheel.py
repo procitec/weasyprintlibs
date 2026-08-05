@@ -9,11 +9,11 @@ import sys
 from collections import deque
 from pathlib import Path
 
-from runtime_config import generate, load_runtime_config
+from runtime_config import load_runtime_config
 from verify_runtime_payload import verify_payload
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PACKAGE_ROOT = ROOT / "src" / "weasyprint_libs"
+DEFAULT_RUNTIME_ROOT = ROOT / "_build" / "runtime"
 
 SYSTEM_PREFIXES = (
     "/System/Library/",
@@ -119,9 +119,9 @@ def collect_libraries(prefix: Path) -> dict[str, Path]:
     return collected
 
 
-def copy_fontconfig(prefix: Path, package_root: Path) -> None:
+def copy_fontconfig(prefix: Path, runtime_root: Path) -> None:
     source = prefix / "etc" / "fonts"
-    destination = package_root / "etc" / "fonts"
+    destination = runtime_root / "etc" / "fonts"
     if not source.is_dir():
         raise RuntimeError(f"Homebrew Fontconfig directory is missing: {source}")
 
@@ -152,13 +152,15 @@ def patch_library(path: Path, bundled_names: set[str]) -> None:
     run("codesign", "--force", "--sign", "-", str(path))
 
 
-def stage(package_root: Path) -> None:
+def stage(runtime_root: Path) -> None:
     require_macos()
-    generate(check=True)
+    load_runtime_config()
+    shutil.rmtree(runtime_root, ignore_errors=True)
+    runtime_root.mkdir(parents=True, exist_ok=True)
     prefix = homebrew_prefix()
     libraries = collect_libraries(prefix)
 
-    lib_destination = package_root / "lib"
+    lib_destination = runtime_root / "lib"
     shutil.rmtree(lib_destination, ignore_errors=True)
     lib_destination.mkdir(parents=True, exist_ok=True)
 
@@ -169,8 +171,8 @@ def stage(package_root: Path) -> None:
     for library in sorted(lib_destination.glob("*.dylib")):
         patch_library(library, bundled_names)
 
-    copy_fontconfig(prefix, package_root)
-    required = verify_payload(package_root, "macos")
+    copy_fontconfig(prefix, runtime_root)
+    required = verify_payload(runtime_root, "macos")
 
     print(
         f"Staged {len(libraries)} Homebrew libraries from {prefix} into {lib_destination}; "
@@ -183,16 +185,16 @@ def main() -> None:
         description="Stage and relocate the Homebrew runtime for a macOS wheel."
     )
     parser.add_argument(
-        "--package-root",
+        "--runtime-root",
         type=Path,
-        default=DEFAULT_PACKAGE_ROOT,
-        help="Destination package directory",
+        default=DEFAULT_RUNTIME_ROOT,
+        help="Destination runtime directory",
     )
     args = parser.parse_args()
-    package_root = args.package_root
-    if not package_root.is_absolute():
-        package_root = (ROOT / package_root).resolve()
-    stage(package_root)
+    runtime_root = args.runtime_root
+    if not runtime_root.is_absolute():
+        runtime_root = (ROOT / runtime_root).resolve()
+    stage(runtime_root)
 
 
 if __name__ == "__main__":
