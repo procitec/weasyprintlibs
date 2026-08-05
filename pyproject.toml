@@ -1,16 +1,9 @@
-[build-system]
-requires = ["setuptools>=80", "wheel>=0.45"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "weasyprint-libs"
-version = "26.1.1"
-description = "Bundled native libraries for a reproducible WeasyPrint runtime"
+name = "weasyprint-bundled-builder"
+version = "26.1.2"
+description = "Build platform-specific WeasyPrint wheels with bundled native libraries"
 requires-python = ">=3.13"
 license = "MIT"
-dependencies = [
-    "cffi>=1.15.1",
-]
 
 [dependency-groups]
 native-build = [
@@ -18,20 +11,9 @@ native-build = [
     "ninja>=1.12",
     "zstandard>=0.23",
 ]
-
 [tool.uv]
 package = false
 default-groups = ["native-build"]
-
-[tool.setuptools]
-package-dir = { "" = "src" }
-include-package-data = true
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-weasyprint_libs = ["lib/**", "bin/**", "etc/**", "share/**"]
 
 [tool.ruff]
 target-version = "py313"
@@ -41,10 +23,12 @@ exclude = [
     ".venv",
     "_build",
     "dist",
-    "dist-direct",
     "downloads",
-    "src/weasyprint_libs",
 ]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

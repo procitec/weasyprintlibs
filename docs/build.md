@@ -1,74 +1,47 @@
-# Build and test workflow
+# Project commands with `just`
 
-## Linux wheel
+The repository uses `just` as the public command interface. Build logic remains
+in Python and can also be called directly with `uv run python -m scripts`.
 
-The reproducible Linux build runs in the manylinux container:
+List available recipes:
 
 ```bash
-docker build \
-  -f containers/Dockerfile.manylinux_2_28 \
-  -t weasyprintlibs-manylinux .
-
-docker run --rm \
-  -v "$PWD:/io" \
-  -w /io \
-  weasyprintlibs-manylinux \
-  make wheel
+just
 ```
 
-`make wheel` performs the following steps:
+Common commands:
 
-1. download and verify source archives;
-2. build the pinned native stack;
-3. stage runtime libraries and data;
-4. patch Linux runtime paths;
-5. build the platform wheel;
-6. verify the activation `.pth` file.
-
-Useful targets:
-
-```text
-make sync          Create or update the uv environment
-make fetch         Download and verify native sources
-make source-lock   Record observed source checksums
-make native-build  Build the Linux native stack
-make stage         Stage package data and patch ELF paths
-make wheel         Build the complete wheel
-make local-test    Install and test the generated wheel locally
-make clean         Remove generated build output
-make distclean     Also remove environments and download caches
+```bash
+just check
+just build
+just build 69.0
+just local-test
+just verify-wheel dist
+just clean
 ```
 
-The pinned native source configuration is stored in `config/libraries.toml`.
-
-## Windows wheel
-
-Normal Windows builds use the committed MSYS2 package lock and do not resolve packages again:
+Windows profiles are regular recipe parameters:
 
 ```powershell
-.\scripts\build_windows.ps1
+just build 69.0 x86_64
+just windows-update-lock x86_64
 ```
 
-Update the package closure only when intentionally changing the Windows native stack:
+On macOS, install the Homebrew runtime build dependencies before running the
+build:
 
-```powershell
-uv sync
-uv run python scripts/fetch_windows_packages.py --update-lock
+```bash
+brew install pango
+just build 69.0
 ```
 
-Commit the resulting `config/windows-packages.lock.toml`.
+## Responsibility split
 
-## Runtime tests
+- `justfile` contains short, discoverable user commands.
+- `scripts/project.py` defines workflow ordering and cross-platform cleanup.
+- Specialised scripts continue to implement ELF, Mach-O, PE/MSYS2, wheel and
+  runtime details.
+- GitHub Actions should call the same `just` recipes as local development.
 
-The runtime tests install the generated wheel into a clean environment, install WeasyPrint and render a PDF without manually calling `activate()`.
-
-GitHub Actions test:
-
-- Ubuntu 24.04;
-- Rocky Linux 8;
-- Rocky Linux 9;
-- Windows x86-64.
-- MacOS x86-64.
-- MacOS arm64.
-
-A successful build on the build image alone is insufficient. The Rocky tests are important because they reveal accidental dependencies on newer system libraries.
+This avoids duplicating workflow order in a Makefile, Bash scripts, PowerShell
+scripts and CI YAML while keeping platform-specific binary logic isolated.

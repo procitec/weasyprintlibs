@@ -1,18 +1,15 @@
 from __future__ import annotations
 
+import argparse
 import shutil
-import tomllib
 from pathlib import Path
-from typing import Any
+
+from runtime_config import load_runtime_config
+from verify_runtime_payload import verify_payload
+from windows_config import load_windows_profile
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = ROOT / "config" / "windows-packages.toml"
-PACKAGE_ROOT = ROOT / "src" / "weasyprint_libs"
-
-
-def load_toml(path: Path) -> dict[str, Any]:
-    with path.open("rb") as stream:
-        return tomllib.load(stream)
+RUNTIME_ROOT = ROOT / "_build" / "runtime"
 
 
 def reset(path: Path) -> None:
@@ -26,16 +23,21 @@ def copy_tree(source: Path, destination: Path) -> None:
 
 
 def main() -> None:
-    config = load_toml(CONFIG_PATH)["windows"]
-    msys_root = ROOT / config["extract_dir"] / config["prefix"]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--profile")
+    args = parser.parse_args()
+
+    load_runtime_config()
+    profile = load_windows_profile(args.profile)
+    msys_root = ROOT / profile["extract_dir"] / profile["prefix"]
     bin_source = msys_root / "bin"
     if not bin_source.is_dir():
-        raise RuntimeError(f"Missing extracted MinGW prefix: {msys_root}")
+        raise RuntimeError(f"Missing extracted MSYS2 prefix: {msys_root}")
 
-    bin_destination = PACKAGE_ROOT / "bin"
-    etc_destination = PACKAGE_ROOT / "etc"
-    share_destination = PACKAGE_ROOT / "share"
-    lib_destination = PACKAGE_ROOT / "lib"
+    bin_destination = RUNTIME_ROOT / "bin"
+    etc_destination = RUNTIME_ROOT / "etc"
+    share_destination = RUNTIME_ROOT / "share"
+    lib_destination = RUNTIME_ROOT / "lib"
 
     for path in (bin_destination, etc_destination, share_destination, lib_destination):
         reset(path)
@@ -55,7 +57,15 @@ def main() -> None:
     copy_tree(msys_root / "share" / "fontconfig", share_destination / "fontconfig")
     copy_tree(msys_root / "share" / "glib-2.0", share_destination / "glib-2.0")
 
-    print(f"Staged {len(dlls)} DLLs into {bin_destination}")
+    required = verify_payload(
+        RUNTIME_ROOT,
+        "windows",
+        architecture=profile["architecture"],
+    )
+    print(
+        f"Staged {len(dlls)} DLLs for {profile['profile']} into {bin_destination}; "
+        f"verified {len(required)} runtime entry DLLs"
+    )
 
 
 if __name__ == "__main__":

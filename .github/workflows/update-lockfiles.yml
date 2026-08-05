@@ -94,6 +94,7 @@ jobs:
           }
 
           uv run python scripts/fetch_windows_packages.py `
+            --profile x86_64 `
             --update-lock `
             --pacman "$pacman"
 

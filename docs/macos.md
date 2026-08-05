@@ -9,30 +9,13 @@ Two architecture-specific wheels are produced:
 | Apple Silicon | `macosx_11_0_arm64` | `macos-15` |
 | Intel | `macosx_11_0_x86_64` | `macos-15-intel` |
 
-## Local build
-
-Install Homebrew, `uv`, and Pango, then run:
-
-```bash
-./scripts/build_macos.sh
-```
-
-Equivalent Make targets are:
-
-```bash
-brew install pango
-uv sync --frozen
-make macos-wheel
-make macos-patched-wheel WEASYPRINT_VERSION=69.0
-```
-
 ## Staging process
 
 `scripts/stage_macos_wheel.py` performs these steps:
 
 1. locate the Pango, Cairo, Fontconfig, FreeType and HarfBuzz seed libraries;
 2. read their Mach-O dependencies recursively with `otool -L`;
-3. copy every Homebrew dependency into `weasyprintlibs_native/lib`;
+3. copy every Homebrew dependency into `_build/runtime/lib`;
 4. replace Homebrew install names with `@loader_path/<name>`;
 5. set each bundled dylib ID to `@loader_path/<name>`;
 6. ad-hoc sign the modified dylibs;

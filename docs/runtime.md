@@ -1,57 +1,57 @@
-# Runtime activation
+# Embedded native runtime
 
-## Automatic activation
+The runtime is embedded below `weasyprint/_weasyprint_libs`. The patched
+`weasyprint/__init__.py` calls `_weasyprint_libs_loader.activate()` before the
+normal WeasyPrint imports continue.
 
-The wheel contains a top-level `.pth` file:
+## Source and generated files
 
-```text
-weasyprint_libs.pth
-```
-
-Its purpose is to initialize the packaged native runtime during Python site initialization. The activation function is idempotent and keeps native library handles alive.
-
-## Linux
-
-Before loading Fontconfig, Pango or Cairo, the loader configures:
+The maintained loader source is:
 
 ```text
-FONTCONFIG_FILE
-FONTCONFIG_PATH
-XDG_CACHE_HOME
+runtime/loader.py
 ```
 
-The bundled `fonts.conf` and its relative `conf.d` includes must be resolved from the installed package directory.
+The central runtime configuration is:
 
-All bundled ELF libraries should use a relative runtime path such as `$ORIGIN`, so dependencies located in the same package directory are resolved without relying on system copies.
-
-Avoid mixing bundled and system copies of GLib, Fontconfig, FreeType, HarfBuzz, Cairo and Pango. This can cause ABI conflicts that appear as font lookup failures or segmentation faults.
-
-## Windows
-
-The loader:
-
-1. adds the packaged `bin` directory with `os.add_dll_directory()`;
-2. preserves the directory handle;
-3. configures Fontconfig;
-4. loads the required runtime DLLs.
-
-## Diagnostic checks
-
-Linux dependency metadata:
-
-```bash
-readelf -d path/to/library.so | grep -E 'NEEDED|RPATH|RUNPATH|SONAME'
+```text
+config/runtime-libraries.toml
 ```
 
-Resolved dependencies:
+During wheel patching they become:
 
-```bash
-LD_LIBRARY_PATH=path/to/weasyprint_libs/lib \
-ldd path/to/weasyprint_libs/lib/libpango-1.0.so.0
+```text
+weasyprint/_weasyprint_libs_loader.py
+weasyprint/_weasyprint_libs_config.py
 ```
 
-Wheel contents:
+No standalone Python package or `.pth` activation file is involved.
 
-```bash
-python -m zipfile -l dist/*.whl
+## Staging
+
+All platforms stage their payload in:
+
+```text
+_build/runtime/
+  lib/ or bin/
+  etc/
+  share/
 ```
+
+Linux uses `$ORIGIN` RPATHs. macOS rewrites install names to
+`@loader_path/<name>`. Windows registers the embedded `bin` directory with
+`os.add_dll_directory` before preloading the configured entry DLLs.
+
+Fontconfig is pointed at the embedded configuration and an embedded cache
+location through `FONTCONFIG_FILE`, `FONTCONFIG_PATH` and `XDG_CACHE_HOME`.
+
+## Avoiding mixed runtimes
+
+Pango, HarfBuzz, HarfBuzz subset, Fontconfig and FreeType are explicitly part of
+the configured runtime entry set. The Linux integration test inspects
+`/proc/<pid>/maps` and rejects system copies of these libraries after rendering
+a PDF.
+
+The CFFI alias map is used on macOS because WeasyPrint probes several Linux,
+Windows and macOS library names. Known aliases are redirected to absolute paths
+inside the embedded runtime.

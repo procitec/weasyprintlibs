@@ -8,16 +8,40 @@ import csv
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
+import tomllib
 import urllib.request
 import zipfile
+from email.parser import Parser
 from pathlib import Path
+
+try:
+    from runtime_config import load_runtime_config, render_generated_module
+except ModuleNotFoundError:  # Imported as scripts.patch_weasyprint_wheel in unit tests.
+    from scripts.runtime_config import load_runtime_config, render_generated_module
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLED_DIR = "_weasyprint_libs"
 BOOTSTRAP_MODULE = "_weasyprint_libs_loader.py"
-COMMON_LOADER = ROOT / "src" / "weasyprint_libs" / "loader.py"
+BOOTSTRAP_CONFIG_MODULE = "_weasyprint_libs_config.py"
+COMMON_LOADER = ROOT / "runtime" / "loader.py"
+PROJECT_CONFIG = ROOT / "pyproject.toml"
+
+
+def project_version() -> str:
+    with PROJECT_CONFIG.open("rb") as stream:
+        return tomllib.load(stream)["project"]["version"]
+
+
+def bundled_version(upstream_version: str, builder_version: str) -> str:
+    local = re.sub(r"[^0-9A-Za-z]+", ".", builder_version).strip(".").lower()
+    if not local:
+        raise ValueError(
+            f"Invalid project version for local version identifier: {builder_version!r}"
+        )
+    return f"{upstream_version}+bundled.{local}"
 
 
 def download_wheel(version: str, destination: Path) -> Path:
@@ -59,6 +83,20 @@ def download_wheel(version: str, destination: Path) -> Path:
     return cached
 
 
+def wheel_version(wheel: Path) -> str:
+    with zipfile.ZipFile(wheel) as archive:
+        metadata_names = [
+            name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
+        ]
+        if len(metadata_names) != 1:
+            raise RuntimeError(f"Expected one METADATA file in {wheel}, got {metadata_names}")
+        metadata = Parser().parsestr(archive.read(metadata_names[0]).decode("utf-8"))
+    version = metadata.get("Version")
+    if not version:
+        raise RuntimeError(f"No Version field in {wheel}")
+    return version
+
+
 def copy_runtime(runtime: Path, package: Path) -> None:
     target = package / BUNDLED_DIR
     target.mkdir(parents=True, exist_ok=True)
@@ -71,8 +109,11 @@ def copy_runtime(runtime: Path, package: Path) -> None:
 def bootstrap_source() -> str:
     if not COMMON_LOADER.is_file():
         raise RuntimeError(f"Common runtime loader is missing: {COMMON_LOADER}")
-
     return COMMON_LOADER.read_text(encoding="utf-8")
+
+
+def bootstrap_config_source() -> str:
+    return render_generated_module(load_runtime_config())
 
 
 def _bootstrap_insertion_line(source: str) -> int:
@@ -102,8 +143,8 @@ def _bootstrap_insertion_line(source: str) -> int:
 
 def patch_init(package: Path) -> None:
     init = package / "__init__.py"
-    bootstrap = package / BOOTSTRAP_MODULE
-    bootstrap.write_text(bootstrap_source(), encoding="utf-8")
+    (package / BOOTSTRAP_MODULE).write_text(bootstrap_source(), encoding="utf-8")
+    (package / BOOTSTRAP_CONFIG_MODULE).write_text(bootstrap_config_source(), encoding="utf-8")
 
     original = init.read_text(encoding="utf-8")
     marker = "from ._weasyprint_libs_loader import activate as _activate_weasyprint_libs"
@@ -112,16 +153,37 @@ def patch_init(package: Path) -> None:
 
     activation = f"{marker}\n_activate_weasyprint_libs()\ndel _activate_weasyprint_libs\n\n"
     lines = original.splitlines(keepends=True)
-    insertion_line = _bootstrap_insertion_line(original)
-    lines.insert(insertion_line, activation)
+    lines.insert(_bootstrap_insertion_line(original), activation)
     init.write_text("".join(lines), encoding="utf-8")
 
 
-def patch_wheel_metadata(root: Path, platform_tag: str) -> Path:
+def patch_metadata(
+    root: Path,
+    version: str,
+    platform_tag: str,
+    upstream_version: str,
+    builder_version: str,
+) -> Path:
     dist_infos = list(root.glob("weasyprint-*.dist-info"))
     if len(dist_infos) != 1:
         raise RuntimeError(f"Expected one WeasyPrint dist-info directory, got: {dist_infos}")
-    dist_info = dist_infos[0]
+
+    old_dist_info = dist_infos[0]
+    metadata_file = old_dist_info / "METADATA"
+    metadata_lines = metadata_file.read_text(encoding="utf-8").splitlines()
+    metadata_file.write_text(
+        "\n".join(
+            f"Version: {version}" if line.startswith("Version:") else line
+            for line in metadata_lines
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    dist_info = root / f"weasyprint-{version}.dist-info"
+    if dist_info != old_dist_info:
+        old_dist_info.rename(dist_info)
+
     wheel_file = dist_info / "WHEEL"
     lines = wheel_file.read_text(encoding="utf-8").splitlines()
     patched: list[str] = []
@@ -142,6 +204,18 @@ def patch_wheel_metadata(root: Path, platform_tag: str) -> Path:
     if not tag_written:
         patched.append(f"Tag: py3-none-{platform_tag}")
     wheel_file.write_text("\n".join(patched) + "\n", encoding="utf-8")
+
+    runtime_metadata = {
+        "distribution": "weasyprint",
+        "upstream_version": upstream_version,
+        "bundled_version": version,
+        "builder_version": builder_version,
+        "platform_tag": platform_tag,
+    }
+    (dist_info / "BUNDLED-RUNTIME.json").write_text(
+        json.dumps(runtime_metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return dist_info
 
 
@@ -162,19 +236,24 @@ def write_record(root: Path, dist_info: Path) -> None:
         csv.writer(stream, lineterminator="\n").writerows(rows)
 
 
-def output_name(source: Path, platform_tag: str) -> str:
-    parts = source.name[:-4].split("-")
-    if len(parts) < 5:
-        raise RuntimeError(f"Unexpected wheel filename: {source.name}")
-    return "-".join(parts[:-3] + ["py3", "none", platform_tag]) + ".whl"
+def output_name(version: str, platform_tag: str) -> str:
+    return f"weasyprint-{version}-py3-none-{platform_tag}.whl"
 
 
-def build_wheel(source: Path, runtime: Path, destination: Path, platform_tag: str) -> Path:
+def build_wheel(
+    source: Path,
+    runtime: Path,
+    destination: Path,
+    platform_tag: str,
+    upstream_version: str,
+    builder_version: str,
+) -> Path:
     if not source.is_file():
         raise FileNotFoundError(source)
     if not (runtime / "lib").is_dir() and not (runtime / "bin").is_dir():
         raise RuntimeError(f"No staged native runtime found below {runtime}")
 
+    version = bundled_version(upstream_version, builder_version)
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="weasyprint-wheel-") as temporary:
         unpacked = Path(temporary)
@@ -186,10 +265,12 @@ def build_wheel(source: Path, runtime: Path, destination: Path, platform_tag: st
             raise RuntimeError(f"Wheel does not contain a weasyprint package: {source}")
         copy_runtime(runtime, package)
         patch_init(package)
-        dist_info = patch_wheel_metadata(unpacked, platform_tag)
+        dist_info = patch_metadata(
+            unpacked, version, platform_tag, upstream_version, builder_version
+        )
         write_record(unpacked, dist_info)
 
-        output = destination / output_name(source, platform_tag)
+        output = destination / output_name(version, platform_tag)
         output.unlink(missing_ok=True)
         with zipfile.ZipFile(
             output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
@@ -205,10 +286,9 @@ def main() -> None:
     )
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--wheel", type=Path, help="Existing upstream WeasyPrint wheel")
-    source.add_argument(
-        "--version", help="WeasyPrint version to download from the configured package index"
-    )
-    parser.add_argument("--runtime", type=Path, default=Path("src/weasyprint_libs"))
+    source.add_argument("--version", help="WeasyPrint version to download from PyPI")
+    parser.add_argument("--project-version", default=project_version())
+    parser.add_argument("--runtime", type=Path, default=Path("_build/runtime"))
     parser.add_argument("--download-dir", type=Path, default=Path("downloads/weasyprint"))
     parser.add_argument("--output-dir", type=Path, default=Path("dist"))
     parser.add_argument("--platform-tag", required=True)
@@ -217,14 +297,22 @@ def main() -> None:
     runtime = (ROOT / args.runtime).resolve()
     output_dir = (ROOT / args.output_dir).resolve()
     if args.wheel:
-        wheel = args.wheel if args.wheel.is_absolute() else (ROOT / args.wheel)
+        wheel = args.wheel if args.wheel.is_absolute() else ROOT / args.wheel
+        upstream_version = args.version or wheel_version(wheel)
     else:
-        version = args.version or os.environ.get("WEASYPRINT_VERSION")
-        if not version:
+        upstream_version = args.version or os.environ.get("WEASYPRINT_VERSION")
+        if not upstream_version:
             raise SystemExit("Pass --version/--wheel or set WEASYPRINT_VERSION")
-        wheel = download_wheel(version, (ROOT / args.download_dir).resolve())
+        wheel = download_wheel(upstream_version, (ROOT / args.download_dir).resolve())
 
-    output = build_wheel(wheel.resolve(), runtime, output_dir, args.platform_tag)
+    output = build_wheel(
+        wheel.resolve(),
+        runtime,
+        output_dir,
+        args.platform_tag,
+        upstream_version,
+        args.project_version,
+    )
     print(f"Created patched WeasyPrint wheel: {output}")
 
 

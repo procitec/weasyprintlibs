@@ -1,4 +1,9 @@
 [windows]
+default_profile = "x86_64"
+
+# Current release profile. Existing CI and local commands use this profile when
+# --profile is omitted.
+[windows.profiles.x86_64]
 repository = "mingw64"
 architecture = "x86_64"
 prefix = "mingw64"
@@ -7,9 +12,6 @@ lock_file = "config/windows-packages.lock.toml"
 download_dir = "downloads/windows"
 extract_dir = "_build/windows-root"
 platform_tag = "win_amd64"
-
-# Pacman resolves the complete transitive runtime closure. Keeping the major
-# rendering components explicit also documents the intended Windows stack.
 packages = [
     "mingw-w64-x86_64-pango",
     "mingw-w64-x86_64-cairo",
@@ -18,4 +20,27 @@ packages = [
     "mingw-w64-x86_64-fribidi",
     "mingw-w64-x86_64-glib2",
     "mingw-w64-x86_64-harfbuzz",
+]
+
+# Prepared profile for a future native Windows ARM64 wheel. It is deliberately
+# not enabled in CI until config/windows-packages-arm64.lock.toml is generated
+# on a suitable MSYS2 ARM64 environment and the wheel is runtime-tested on
+# Windows ARM64.
+[windows.profiles.arm64]
+repository = "clangarm64"
+architecture = "arm64"
+prefix = "clangarm64"
+mirror_base_url = "https://mirror.msys2.org/mingw/clangarm64"
+lock_file = "config/windows-packages-arm64.lock.toml"
+download_dir = "downloads/windows-arm64"
+extract_dir = "_build/windows-arm64-root"
+platform_tag = "win_arm64"
+packages = [
+    "mingw-w64-clang-aarch64-pango",
+    "mingw-w64-clang-aarch64-cairo",
+    "mingw-w64-clang-aarch64-fontconfig",
+    "mingw-w64-clang-aarch64-freetype",
+    "mingw-w64-clang-aarch64-fribidi",
+    "mingw-w64-clang-aarch64-glib2",
+    "mingw-w64-clang-aarch64-harfbuzz",
 ]
