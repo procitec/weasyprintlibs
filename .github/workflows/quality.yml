@@ -22,7 +22,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-
+      - name: Install just
+        uses: extractions/setup-just@v3
       - name: Install uv
         uses: astral-sh/setup-uv@v9.0.0
         with:
@@ -33,4 +34,4 @@ jobs:
         run: uv python install 3.13
 
       - name: Run Ruff checks
-        run: make check
+        run: just check
