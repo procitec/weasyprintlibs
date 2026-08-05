@@ -126,7 +126,7 @@ jobs:
           WEASYPRINT_VERSION: ${{ inputs.weasyprint_version || '69.0' }}
         run: |
           uv sync --frozen
-          just build just build "${WEASYPRINT_VERSION}" x86_64
+          just build "${WEASYPRINT_VERSION}" x86_64
       - uses: actions/upload-artifact@v7
         with:
           name: weasyprint-macos-${{ matrix.arch }}
