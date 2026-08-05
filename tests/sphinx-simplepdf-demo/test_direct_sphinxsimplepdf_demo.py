@@ -111,7 +111,11 @@ def test_direct_sphinx_simplepdf_demo_wheel_builds_document() -> None:
     assert output_pdf.read_bytes().startswith(b"%PDF-")
 
     reader = PdfReader(output_pdf)
-    assert len(reader.pages) == 81
+    # pdf length depends on installed packages number, printed on last pages.
+    # size may vary therefore
+    assert len(reader.pages) >= 72 # last page starting with non-dynamic content
+    # may be lower on some future platforms
+    assert len(reader.pages) >= 80
 
     if sys.platform.startswith("linux"):
         _assert_linux_runtime_is_isolated(native_dir)
