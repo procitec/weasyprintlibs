@@ -4,9 +4,7 @@
 _build/
 build/
 dist/
-downloads/current/
-downloads/windows/
-downloads/weasyprint/
+downloads/
 *.egg-info/
 __pycache__/
 *.py[cod]
