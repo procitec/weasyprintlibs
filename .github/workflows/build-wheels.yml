@@ -135,11 +135,42 @@ jobs:
           retention-days: 14
 
   test-ubuntu:
-    name: Test Ubuntu 24.04
+    name: Test Ubuntu 24.04 (${{ matrix.variant }})
     needs: linux-wheel
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: bundled-only
+            system_pango: false
+          - variant: system-pango
+            system_pango: true
+    container:
+      image: ubuntu:24.04
     steps:
+      - name: Install test prerequisites
+        env:
+          INSTALL_SYSTEM_PANGO: ${{ matrix.system_pango }}
+        run: |
+          apt-get update
+          packages=(
+            ca-certificates
+            curl
+            git
+            fonts-dejavu-core
+          )
+          if [[ "${INSTALL_SYSTEM_PANGO}" == "true" ]]; then
+            packages+=(
+              libpango-1.0-0
+              libpangocairo-1.0-0
+              libpangoft2-1.0-0
+            )
+          fi
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            --no-install-recommends "${packages[@]}"
+          rm -rf /var/lib/apt/lists/*
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v9.0.0
         with:
@@ -156,11 +187,74 @@ jobs:
             wheelhouse/weasyprint-*.whl "pytest>=8,<9" "pypdf>=6,<7"
           .test-venv/bin/python -m pytest \
             tests/ -v -s
+      - name: Verify bundled libraries win over system libraries
+        if: matrix.system_pango
+        run: |
+          .test-venv/bin/python - <<'PY'
+          from pathlib import Path
+
+          import weasyprint
+          from weasyprint import HTML
+
+          HTML(string="<p>Bundled runtime precedence test</p>").write_pdf(
+              "tests/runtime-system-pango.pdf"
+          )
+
+          package_root = Path(weasyprint.__file__).resolve().parent
+          loaded_paths: set[Path] = set()
+
+          for line in Path("/proc/self/maps").read_text(encoding="utf-8").splitlines():
+              fields = line.split(maxsplit=5)
+              if len(fields) != 6:
+                  continue
+              raw_path = fields[5].removesuffix(" (deleted)")
+              if not raw_path.startswith("/") or ".so" not in raw_path:
+                  continue
+              loaded_paths.add(Path(raw_path).resolve())
+
+          expected = {
+              "Pango": ("libpango-1.0",),
+              "PangoFT2": ("libpangoft2-1.0",),
+              "HarfBuzz": ("libharfbuzz",),
+              "Fontconfig": ("libfontconfig",),
+              "GLib": ("libglib-2.0",),
+              "GObject": ("libgobject-2.0",),
+          }
+
+          failures: list[str] = []
+          for label, name_fragments in expected.items():
+              matches = sorted(
+                  path
+                  for path in loaded_paths
+                  if any(fragment in path.name for fragment in name_fragments)
+              )
+              if not matches:
+                  failures.append(f"{label}: no loaded library found")
+                  continue
+
+              external = [
+                  path
+                  for path in matches
+                  if path != package_root and package_root not in path.parents
+              ]
+              if external:
+                  failures.append(
+                      f"{label}: loaded outside bundled wheel: "
+                      + ", ".join(str(path) for path in external)
+                  )
+
+              print(f"{label}:")
+              for path in matches:
+                  print(f"  {path}")
+
+          if failures:
+              raise SystemExit("\n".join(failures))
+          PY
       - name: Upload test PDF
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: runtime-test-pdf-ubuntu
+          name: runtime-test-pdf-ubuntu-${{ matrix.variant }}
           path: tests/**/*.pdf
           if-no-files-found: ignore
           retention-days: 14
