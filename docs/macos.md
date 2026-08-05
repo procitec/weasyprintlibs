@@ -9,22 +9,6 @@ Two architecture-specific wheels are produced:
 | Apple Silicon | `macosx_11_0_arm64` | `macos-15` |
 | Intel | `macosx_11_0_x86_64` | `macos-15-intel` |
 
-## Local build
-
-Install Homebrew, `uv`, and Pango, then run:
-
-```bash
-./scripts/build_macos.sh
-```
-
-Equivalent Make targets are:
-
-```bash
-brew install pango
-uv sync --frozen
-make macos-wheel WEASYPRINT_VERSION=69.0
-```
-
 ## Staging process
 
 `scripts/stage_macos_wheel.py` performs these steps:

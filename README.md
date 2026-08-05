@@ -23,22 +23,8 @@ weasyprint-69.0+bundled.26.1.1-py3-none-manylinux_2_28_x86_64.whl
 
 ## Build
 
-Linux:
-
 ```bash
-make wheel WEASYPRINT_VERSION=69.0
-```
-
-Windows:
-
-```powershell
-.\scripts\build_windows.ps1 -WeasyPrintVersion 69.0
-```
-
-macOS:
-
-```bash
-WEASYPRINT_VERSION=69.0 ./scripts/build_macos.sh
+just build "69.0" x86_64
 ```
 
 Generated wheels are written to `dist/`.
@@ -48,26 +34,20 @@ Generated wheels are written to `dist/`.
 Fast source and build-logic tests:
 
 ```bash
-make check
+just check
 ```
 
 Build the complete Linux wheel, install it into a clean virtual environment and
 render the test document without `full_fonts=True`:
 
 ```bash
-make local-test
+make test-unit
 ```
 
 Test an already built wheel without rebuilding the native stack:
 
 ```bash
-make local-test-wheel
-```
-
-On Windows:
-
-```powershell
-.\scripts\test_local.ps1 -WeasyPrintVersion 69.0
+make test-wheel
 ```
 
 ## Documentation

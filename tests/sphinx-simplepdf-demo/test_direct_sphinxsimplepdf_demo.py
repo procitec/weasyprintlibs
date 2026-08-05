@@ -113,7 +113,7 @@ def test_direct_sphinx_simplepdf_demo_wheel_builds_document() -> None:
     reader = PdfReader(output_pdf)
     # pdf length depends on installed packages number, printed on last pages.
     # size may vary therefore
-    assert len(reader.pages) >= 72 # last page starting with non-dynamic content
+    assert len(reader.pages) >= 72  # last page starting with non-dynamic content
     # may be lower on some future platforms
     assert len(reader.pages) >= 80
 

@@ -30,6 +30,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
+      - name: Install just
+        uses: extractions/setup-just@v3
       - name: Require committed uv lock
         run: test -f uv.lock
       - name: Build manylinux image
@@ -49,7 +51,7 @@ jobs:
             --env UV_CACHE_DIR=/io/.uv-cache \
             --env WEASYPRINT_VERSION="${version}" \
             weasyprint-bundled-manylinux:ci \
-            bash -lc 'uv sync --frozen && make wheel WEASYPRINT_VERSION="${WEASYPRINT_VERSION}"'
+            bash -lc 'uv sync --frozen && just build "${WEASYPRINT_VERSION}" x86_64'
       - uses: actions/upload-artifact@v7
         with:
           name: weasyprint-manylinux-2-28-x86-64
@@ -63,6 +65,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
+      - name: Install just
+        uses: extractions/setup-just@v3
       - name: Require committed lockfiles
         shell: pwsh
         run: |
@@ -83,7 +87,8 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($version)) {
             $version = $env:DEFAULT_WEASYPRINT_VERSION
           }
-          ./scripts/build_windows.ps1 -WeasyPrintVersion $version -Profile x86_64
+          uv sync --frozen
+          just build $version x86_64 x86_64
       - uses: actions/upload-artifact@v7
         with:
           name: weasyprint-windows-x86-64
@@ -109,6 +114,8 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
+      - name: Install just
+        uses: extractions/setup-just@v3
       - name: Install Homebrew build libraries
         run: |
           brew untap aws/tap || true
@@ -118,7 +125,8 @@ jobs:
           INPUT_WEASYPRINT_VERSION: ${{ inputs.weasyprint_version }}
         run: |
           export WEASYPRINT_VERSION="${INPUT_WEASYPRINT_VERSION:-${DEFAULT_WEASYPRINT_VERSION}}"
-          ./scripts/build_macos.sh
+          uv sync --frozen
+          just build "${WEASYPRINT_VERSION}" x86_64
       - uses: actions/upload-artifact@v7
         with:
           name: weasyprint-macos-${{ matrix.arch }}
