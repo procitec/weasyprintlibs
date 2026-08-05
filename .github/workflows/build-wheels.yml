@@ -155,21 +155,12 @@ jobs:
           INSTALL_SYSTEM_PANGO: ${{ matrix.system_pango }}
         run: |
           apt-get update
-          packages=(
-            ca-certificates
-            curl
-            git
-            fonts-dejavu-core
-          )
-          if [[ "${INSTALL_SYSTEM_PANGO}" == "true" ]]; then
-            packages+=(
-              libpango-1.0-0
-              libpangocairo-1.0-0
-              libpangoft2-1.0-0
-            )
+          packages="ca-certificates curl git fonts-dejavu-core"
+          if [ "${INSTALL_SYSTEM_PANGO}" = "true" ]; then
+            packages="${packages} libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0"
           fi
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            --no-install-recommends "${packages[@]}"
+            --no-install-recommends ${packages}
           rm -rf /var/lib/apt/lists/*
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v9.0.0
