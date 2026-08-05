@@ -58,7 +58,7 @@ jobs:
             --env UV_CACHE_DIR=/io/.uv-cache \
             --env WEASYPRINT_VERSION \
             weasyprint-bundled-manylinux:release \
-            bash -lc 'uv sync --frozen && just build "${WEASYPRINT_VERSION}" x86_64'
+            bash -lc 'uv sync --frozen && uv run python -m scripts build --version "${WEASYPRINT_VERSION}" --profile x86_64'
       - uses: actions/upload-artifact@v7
         with:
           name: weasyprint-manylinux-2-28-x86-64
