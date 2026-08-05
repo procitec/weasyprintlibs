@@ -31,6 +31,7 @@ command -v brew >/dev/null || {
 
 brew list --versions pango >/dev/null 2>&1 || brew install pango
 uv sync --frozen
+uv run python scripts/runtime_config.py --check
 uv run python scripts/stage_macos_wheel.py
 rm -rf dist
 WHEEL_PLATFORM_TAG="${platform_tag}" uv build --wheel

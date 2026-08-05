@@ -17,7 +17,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLED_DIR = "_weasyprint_libs"
 BOOTSTRAP_MODULE = "_weasyprint_libs_loader.py"
+BOOTSTRAP_CONFIG_MODULE = "_weasyprint_libs_config.py"
 COMMON_LOADER = ROOT / "src" / "weasyprint_libs" / "loader.py"
+COMMON_CONFIG = ROOT / "src" / "weasyprint_libs" / "_weasyprint_libs_config.py"
 
 
 def download_wheel(version: str, destination: Path) -> Path:
@@ -75,6 +77,13 @@ def bootstrap_source() -> str:
     return COMMON_LOADER.read_text(encoding="utf-8")
 
 
+def bootstrap_config_source() -> str:
+    if not COMMON_CONFIG.is_file():
+        raise RuntimeError(f"Generated runtime config is missing: {COMMON_CONFIG}")
+
+    return COMMON_CONFIG.read_text(encoding="utf-8")
+
+
 def _bootstrap_insertion_line(source: str) -> int:
     module = ast.parse(source)
     insertion_line = 0
@@ -103,7 +112,9 @@ def _bootstrap_insertion_line(source: str) -> int:
 def patch_init(package: Path) -> None:
     init = package / "__init__.py"
     bootstrap = package / BOOTSTRAP_MODULE
+    bootstrap_config = package / BOOTSTRAP_CONFIG_MODULE
     bootstrap.write_text(bootstrap_source(), encoding="utf-8")
+    bootstrap_config.write_text(bootstrap_config_source(), encoding="utf-8")
 
     original = init.read_text(encoding="utf-8")
     marker = "from ._weasyprint_libs_loader import activate as _activate_weasyprint_libs"

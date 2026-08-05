@@ -18,3 +18,6 @@ src/weasyprint_libs/lib/
 src/weasyprint_libs/bin/
 src/weasyprint_libs/etc/
 src/weasyprint_libs/share/
+
+# Future Windows ARM64 package cache
+downloads/windows-arm64/

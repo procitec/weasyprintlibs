@@ -1,10 +1,13 @@
 UV ?= uv
 PLATFORM_TAG ?= manylinux_2_28_x86_64
 WEASYPRINT_VERSION ?= 69.0
+WINDOWS_PROFILE ?= x86_64
 
 UV_RUN := $(UV) run
 RUFF ?= $(UV) tool run --from ruff==0.16.1 ruff
-.PHONY: sync lock format check ruff-format ruff-check ruff-fix fetch source-lock native-build stage wheel patched-wheel verify verify-pth clean distclean
+WINDOWS_PLATFORM_TAG = $(shell $(UV_RUN) python scripts/windows_config.py --profile $(WINDOWS_PROFILE) --field platform_tag)
+
+.PHONY: sync lock format check ruff-format ruff-check ruff-fix runtime-config runtime-config-check fetch source-lock native-build stage wheel patched-wheel verify verify-pth clean distclean
 
 sync:
 	$(UV) sync
@@ -14,7 +17,7 @@ lock:
 
 format: ruff-format
 
-check: ruff-check
+check: ruff-check runtime-config-check
 
 ruff-format:
 	$(RUFF) format .
@@ -27,6 +30,12 @@ ruff-fix:
 	$(RUFF) check --fix .
 	$(RUFF) format .
 
+runtime-config:
+	$(UV_RUN) python scripts/runtime_config.py
+
+runtime-config-check:
+	$(UV_RUN) python scripts/runtime_config.py --check
+
 fetch:
 	$(UV_RUN) python scripts/fetch_sources.py
 
@@ -36,7 +45,7 @@ source-lock:
 native-build: fetch
 	$(UV_RUN) python scripts/build.py --clean
 
-stage:
+stage: runtime-config-check
 	$(UV_RUN) python scripts/stage_wheel.py
 	$(UV_RUN) python scripts/patch_rpath.py
 
@@ -63,24 +72,24 @@ distclean: clean
 .PHONY: windows-update-lock windows-fetch windows-extract windows-stage windows-wheel windows-patched-wheel
 
 windows-update-lock:
-	$(UV_RUN) python scripts/fetch_windows_packages.py --update-lock
+	$(UV_RUN) python scripts/fetch_windows_packages.py --profile $(WINDOWS_PROFILE) --update-lock
 
 windows-fetch:
-	$(UV_RUN) python scripts/fetch_windows_packages.py --locked
+	$(UV_RUN) python scripts/fetch_windows_packages.py --profile $(WINDOWS_PROFILE) --locked
 
 windows-extract: windows-fetch
-	$(UV_RUN) python scripts/extract_windows_packages.py
+	$(UV_RUN) python scripts/extract_windows_packages.py --profile $(WINDOWS_PROFILE)
 
-windows-stage: windows-extract
-	$(UV_RUN) python scripts/stage_windows_wheel.py
+windows-stage: runtime-config-check windows-extract
+	$(UV_RUN) python scripts/stage_windows_wheel.py --profile $(WINDOWS_PROFILE)
 
 windows-wheel: windows-stage
-	WHEEL_PLATFORM_TAG=win_amd64 $(UV) build --wheel
+	WHEEL_PLATFORM_TAG=$(WINDOWS_PLATFORM_TAG) $(UV) build --wheel
 	$(UV_RUN) python scripts/verify_pth_wheel.py
 
 windows-patched-wheel: windows-stage
 	rm -rf dist
-	$(UV_RUN) python scripts/patch_weasyprint_wheel.py --version $(WEASYPRINT_VERSION) --platform-tag win_amd64
+	$(UV_RUN) python scripts/patch_weasyprint_wheel.py --version $(WEASYPRINT_VERSION) --platform-tag $(WINDOWS_PLATFORM_TAG)
 
 MACOS_ARCH := $(shell uname -m)
 ifeq ($(MACOS_ARCH),arm64)
@@ -91,7 +100,7 @@ else
 MACOS_PLATFORM_TAG := unsupported
 endif
 
-macos-stage:
+macos-stage: runtime-config-check
 	$(UV_RUN) python scripts/stage_macos_wheel.py
 
 macos-wheel: macos-stage

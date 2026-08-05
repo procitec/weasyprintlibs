@@ -121,7 +121,7 @@ wheels = [
 
 [[package]]
 name = "weasyprint-libs"
-version = "26.1.0"
+version = "26.1.1"
 source = { virtual = "." }
 dependencies = [
     { name = "cffi" },

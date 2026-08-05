@@ -1,20 +1,15 @@
 from __future__ import annotations
 
+import argparse
 import shutil
 import tarfile
-import tomllib
 from pathlib import Path
-from typing import Any
 
 import zstandard
 
+from windows_config import load_toml, load_windows_profile
+
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = ROOT / "config" / "windows-packages.toml"
-
-
-def load_toml(path: Path) -> dict[str, Any]:
-    with path.open("rb") as stream:
-        return tomllib.load(stream)
 
 
 def extract_archive(archive_path: Path, destination: Path) -> None:
@@ -26,11 +21,15 @@ def extract_archive(archive_path: Path, destination: Path) -> None:
 
 
 def main() -> None:
-    config = load_toml(CONFIG_PATH)["windows"]
-    lock_path = ROOT / config["lock_file"]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--profile")
+    args = parser.parse_args()
+
+    profile = load_windows_profile(args.profile)
+    lock_path = ROOT / profile["lock_file"]
     lock = load_toml(lock_path)
-    download_dir = ROOT / config["download_dir"]
-    destination = ROOT / config["extract_dir"]
+    download_dir = ROOT / profile["download_dir"]
+    destination = ROOT / profile["extract_dir"]
 
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True, exist_ok=True)

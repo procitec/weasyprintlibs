@@ -5,6 +5,9 @@ import argparse
 import shutil
 from pathlib import Path
 
+from runtime_config import generate
+from verify_runtime_payload import verify_payload
+
 
 def copy_tree(source: Path, destination: Path) -> None:
     if source.exists():
@@ -30,6 +33,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    generate(check=True)
     root = Path(__file__).resolve().parents[1]
     prefix = (root / args.prefix).resolve()
     package = (root / args.package).resolve()
@@ -60,6 +64,9 @@ def main() -> None:
                 shutil.rmtree(path)
             else:
                 path.unlink()
+
+    required = verify_payload(package, "linux")
+    print(f"Verified {len(required)} Linux runtime entry libraries in {package}")
 
 
 if __name__ == "__main__":

@@ -9,18 +9,11 @@ import sys
 from collections import deque
 from pathlib import Path
 
+from runtime_config import generate, load_runtime_config
+from verify_runtime_payload import verify_payload
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PACKAGE_ROOT = ROOT / "src" / "weasyprint_libs"
-
-SEED_LIBRARY_PATTERNS = (
-    "libpango-1.0*.dylib",
-    "libpangoft2-1.0*.dylib",
-    "libpangocairo-1.0*.dylib",
-    "libcairo*.dylib",
-    "libfontconfig*.dylib",
-    "libfreetype*.dylib",
-    "libharfbuzz*.dylib",
-)
 
 SYSTEM_PREFIXES = (
     "/System/Library/",
@@ -82,7 +75,8 @@ def resolve_seed(prefix: Path, pattern: str) -> Path:
 
 
 def collect_libraries(prefix: Path) -> dict[str, Path]:
-    pending: deque[Path] = deque(resolve_seed(prefix, pattern) for pattern in SEED_LIBRARY_PATTERNS)
+    seed_patterns = load_runtime_config()["macos"]["seed_patterns"]
+    pending: deque[Path] = deque(resolve_seed(prefix, pattern) for pattern in seed_patterns)
     collected: dict[str, Path] = {}
 
     while pending:
@@ -160,6 +154,7 @@ def patch_library(path: Path, bundled_names: set[str]) -> None:
 
 def stage(package_root: Path) -> None:
     require_macos()
+    generate(check=True)
     prefix = homebrew_prefix()
     libraries = collect_libraries(prefix)
 
@@ -175,8 +170,12 @@ def stage(package_root: Path) -> None:
         patch_library(library, bundled_names)
 
     copy_fontconfig(prefix, package_root)
+    required = verify_payload(package_root, "macos")
 
-    print(f"Staged {len(libraries)} Homebrew libraries from {prefix} into {lib_destination}")
+    print(
+        f"Staged {len(libraries)} Homebrew libraries from {prefix} into {lib_destination}; "
+        f"verified {len(required)} runtime entry dylibs"
+    )
 
 
 def main() -> None:

@@ -174,9 +174,13 @@ jobs:
           WEASYPRINT_VERSION: ${{ inputs.weasyprint_version || '69.0' }}
         run: |
           Remove-Item -Recurse -Force dist-direct -ErrorAction SilentlyContinue
+          $platformTag = uv run python scripts/windows_config.py `
+            --profile x86_64 `
+            --field platform_tag
+
           uv run python scripts/patch_weasyprint_wheel.py `
             --version $env:WEASYPRINT_VERSION `
-            --platform-tag win_amd64 `
+            --platform-tag $platformTag.Trim() `
             --output-dir dist-direct
 
       - name: Upload direct WeasyPrint Windows wheel
@@ -257,6 +261,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: false
 
       - name: Download Linux wheel
         uses: actions/download-artifact@v8
@@ -332,6 +338,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: false
 
       - name: Download Linux wheel
         uses: actions/download-artifact@v8
@@ -435,6 +443,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: false
       - name: Download direct Linux wheel
         uses: actions/download-artifact@v8
         with:

@@ -121,6 +121,7 @@ jobs:
               names = archive.namelist()
 
           assert "weasyprint/_weasyprint_libs_loader.py" in names
+          assert "weasyprint/_weasyprint_libs_config.py" in names
           assert any(name.startswith("weasyprint/_weasyprint_libs/lib/") for name in names)
           assert not any(name.startswith("weasyprintlibs_native/") for name in names)
           print(wheels[0])
@@ -192,9 +193,13 @@ jobs:
           }
 
           Remove-Item -Recurse -Force dist-direct -ErrorAction SilentlyContinue
+          $platformTag = uv run python scripts/windows_config.py `
+            --profile x86_64 `
+            --field platform_tag
+
           uv run python scripts/patch_weasyprint_wheel.py `
             --version $weasyprintVersion `
-            --platform-tag win_amd64 `
+            --platform-tag $platformTag.Trim() `
             --output-dir dist-direct
 
       - name: Verify direct WeasyPrint Windows wheel
@@ -204,7 +209,19 @@ jobs:
           if ($wheels.Count -ne 1) {
             throw "Expected exactly one direct WeasyPrint wheel, got $($wheels.Count)"
           }
-          uv run python -c "import pathlib, zipfile; p=next(pathlib.Path('dist-direct').glob('weasyprint-*.whl')); names=zipfile.ZipFile(p).namelist(); assert 'weasyprint/_weasyprint_libs_loader.py' in names; assert any(n.startswith('weasyprint/_weasyprint_libs/bin/') for n in names); assert not any(n.startswith('weasyprintlibs_native/') for n in names); print(p)"
+          $verifyScript = @'
+          import pathlib
+          import zipfile
+
+          wheel = next(pathlib.Path("dist-direct").glob("weasyprint-*.whl"))
+          names = zipfile.ZipFile(wheel).namelist()
+          assert "weasyprint/_weasyprint_libs_loader.py" in names
+          assert "weasyprint/_weasyprint_libs_config.py" in names
+          assert any(name.startswith("weasyprint/_weasyprint_libs/bin/") for name in names)
+          assert not any(name.startswith("weasyprintlibs_native/") for name in names)
+          print(wheel)
+          '@
+          uv run python -c $verifyScript
 
       - name: Upload direct WeasyPrint Windows wheel
         uses: actions/upload-artifact@v7
