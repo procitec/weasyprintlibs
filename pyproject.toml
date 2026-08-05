@@ -8,7 +8,9 @@ version = "26.1.0"
 description = "Bundled native libraries for a reproducible WeasyPrint runtime"
 requires-python = ">=3.13"
 license = "MIT"
-dependencies = []
+dependencies = [
+    "cffi>=1.15.1",
+]
 
 [dependency-groups]
 native-build = [

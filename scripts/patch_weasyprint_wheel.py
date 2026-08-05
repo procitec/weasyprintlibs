@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import base64
 import csv
 import hashlib
@@ -16,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLED_DIR = "_weasyprint_libs"
 BOOTSTRAP_MODULE = "_weasyprint_libs_loader.py"
+COMMON_LOADER = ROOT / "src" / "weasyprint_libs" / "loader.py"
 
 
 def download_wheel(version: str, destination: Path) -> Path:
@@ -67,78 +69,52 @@ def copy_runtime(runtime: Path, package: Path) -> None:
 
 
 def bootstrap_source() -> str:
-    return """from __future__ import annotations
+    if not COMMON_LOADER.is_file():
+        raise RuntimeError(f"Common runtime loader is missing: {COMMON_LOADER}")
 
-import ctypes
-import os
-import sys
-from pathlib import Path
-
-_ACTIVATED = False
-_DLL_DIRECTORY_HANDLES: list[object] = []
-_DLL_HANDLES: list[object] = []
+    return COMMON_LOADER.read_text(encoding="utf-8")
 
 
-def _load(path: Path, *, windows: bool = False) -> None:
-    if not path.is_file():
-        return
-    if windows:
-        _DLL_HANDLES.append(ctypes.WinDLL(str(path)))
-    else:
-        mode = getattr(ctypes, "RTLD_GLOBAL", 0) | getattr(os, "RTLD_NOW", 0)
-        _DLL_HANDLES.append(ctypes.CDLL(str(path), mode=mode))
+def _bootstrap_insertion_line(source: str) -> int:
+    module = ast.parse(source)
+    insertion_line = 0
+    index = 0
 
-
-def activate() -> None:
-    global _ACTIVATED
-    if _ACTIVATED:
-        return
-
-    root = Path(__file__).resolve().parent / "_weasyprint_libs"
-    fonts_dir = root / "etc" / "fonts"
-    fonts_conf = fonts_dir / "fonts.conf"
-    if fonts_conf.is_file():
-        os.environ.setdefault("FONTCONFIG_FILE", str(fonts_conf))
-        os.environ.setdefault("FONTCONFIG_PATH", str(fonts_dir))
-        cache_root = root / "cache"
-        (cache_root / "fontconfig").mkdir(parents=True, exist_ok=True)
-        os.environ.setdefault("XDG_CACHE_HOME", str(cache_root))
-
-    if sys.platform == "win32":
-        bin_dir = root / "bin"
-        if bin_dir.is_dir():
-            _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(str(bin_dir)))
-            os.environ.setdefault("WEASYPRINT_DLL_DIRECTORIES", str(bin_dir))
-        for name in (
-            "libglib-2.0-0.dll", "libgobject-2.0-0.dll", "libgio-2.0-0.dll",
-            "libfontconfig-1.dll", "libfreetype-6.dll", "libharfbuzz-0.dll",
-            "libcairo-2.dll", "libpango-1.0-0.dll", "libpangoft2-1.0-0.dll",
-            "libpangocairo-1.0-0.dll",
+    if module.body:
+        first = module.body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
         ):
-            _load(bin_dir / name, windows=True)
-    else:
-        lib_dir = root / "lib"
-        for name in (
-            "libffi.so.8", "libglib-2.0.so.0", "libgobject-2.0.so.0",
-            "libgio-2.0.so.0", "libfontconfig.so.1", "libfreetype.so.6",
-            "libharfbuzz.so.0", "libcairo.so.2", "libpango-1.0.so.0",
-            "libpangoft2-1.0.so.0", "libpangocairo-1.0.so.0",
-        ):
-            _load(lib_dir / name)
+            insertion_line = first.end_lineno or first.lineno
+            index = 1
 
-    _ACTIVATED = True
-"""
+    while index < len(module.body):
+        statement = module.body[index]
+        if not isinstance(statement, ast.ImportFrom) or statement.module != "__future__":
+            break
+        insertion_line = statement.end_lineno or statement.lineno
+        index += 1
+
+    return insertion_line
 
 
 def patch_init(package: Path) -> None:
     init = package / "__init__.py"
+    bootstrap = package / BOOTSTRAP_MODULE
+    bootstrap.write_text(bootstrap_source(), encoding="utf-8")
+
     original = init.read_text(encoding="utf-8")
     marker = "from ._weasyprint_libs_loader import activate as _activate_weasyprint_libs"
     if marker in original:
         return
-    prefix = f"{marker}\n_activate_weasyprint_libs()\ndel _activate_weasyprint_libs\n\n"
-    init.write_text(prefix + original, encoding="utf-8")
-    (package / BOOTSTRAP_MODULE).write_text(bootstrap_source(), encoding="utf-8")
+
+    activation = f"{marker}\n_activate_weasyprint_libs()\ndel _activate_weasyprint_libs\n\n"
+    lines = original.splitlines(keepends=True)
+    insertion_line = _bootstrap_insertion_line(original)
+    lines.insert(insertion_line, activation)
+    init.write_text("".join(lines), encoding="utf-8")
 
 
 def patch_wheel_metadata(root: Path, platform_tag: str) -> Path:

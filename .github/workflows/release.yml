@@ -187,6 +187,64 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  macos-wheel:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            platform_tag: macosx_11_0_arm64
+          - runner: macos-15-intel
+            arch: x86_64
+            platform_tag: macosx_11_0_x86_64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install Homebrew build libraries
+        run: |
+          brew untap aws/tap || true
+          brew install pango
+      - name: Build macOS wheels
+        shell: bash
+        env:
+          WHEEL_PLATFORM_TAG: ${{ matrix.platform_tag }}
+          WEASYPRINT_VERSION: ${{ inputs.weasyprint_version || '69.0' }}
+        run: |
+          uv sync --frozen
+          uv run python scripts/stage_macos_wheel.py
+          rm -rf dist dist-direct
+          uv build --wheel
+          uv run python scripts/verify_pth_wheel.py
+          uv run python scripts/verify_macos_wheel.py \
+            "$(find dist -maxdepth 1 -name '*.whl' -print -quit)" \
+            --arch "${{ matrix.arch }}"
+          uv run python scripts/patch_weasyprint_wheel.py \
+            --version "${WEASYPRINT_VERSION}" \
+            --platform-tag "${WHEEL_PLATFORM_TAG}" \
+            --output-dir dist-direct
+          uv run python scripts/verify_macos_wheel.py \
+            "$(find dist-direct -maxdepth 1 -name 'weasyprint-*.whl' -print -quit)" \
+            --arch "${{ matrix.arch }}"
+      - name: Upload macOS wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheel-macos-${{ matrix.arch }}
+          path: dist/*.whl
+          if-no-files-found: error
+      - name: Upload direct macOS wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: direct-weasyprint-macos-${{ matrix.arch }}
+          path: dist-direct/weasyprint-*.whl
+          if-no-files-found: error
+
   test-ubuntu:
     name: Test Ubuntu 24.04
     needs: linux-wheel
@@ -330,6 +388,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: false
 
       - name: Download Windows wheel
         uses: actions/download-artifact@v8
@@ -433,6 +493,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: false
+
       - name: Download direct Windows wheel
         uses: actions/download-artifact@v8
         with:
@@ -449,17 +512,95 @@ jobs:
           .test-direct-venv\Scripts\python.exe -m pytest `
             tests\runtime\test_direct_weasyprint_wheel.py -v -s
 
+  test-macos:
+    name: Test macOS ${{ matrix.arch }}
+    needs: macos-wheel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: wheel-macos-${{ matrix.arch }}
+          path: wheelhouse
+      - name: Install and test runtime wheel
+        shell: bash
+        env:
+          WEASYPRINT_VERSION: ${{ inputs.weasyprint_version || '69.0' }}
+        run: |
+          uv python install 3.13
+          uv venv --python 3.13 .test-venv
+          uv pip install --python .test-venv/bin/python \
+            wheelhouse/*.whl "weasyprint==${WEASYPRINT_VERSION}" \
+            "pytest>=8,<9" "pypdf>=6,<7"
+          for formula in pango cairo fontconfig glib harfbuzz freetype; do
+            brew unlink "${formula}" >/dev/null 2>&1 || true
+          done
+          .test-venv/bin/python -m pytest \
+            tests/runtime/test_runtime.py tests/runtime/test_pth_activation.py -v -s
+
+  test-direct-macos:
+    name: Test direct WeasyPrint wheel on macOS ${{ matrix.arch }}
+    needs: macos-wheel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: direct-weasyprint-macos-${{ matrix.arch }}
+          path: wheelhouse-direct
+      - name: Install and test direct wheel
+        shell: bash
+        run: |
+          uv python install 3.13
+          uv venv --python 3.13 .test-direct-venv
+          uv pip install --python .test-direct-venv/bin/python \
+            wheelhouse-direct/weasyprint-*.whl "pytest>=8,<9" "pypdf>=6,<7"
+          for formula in pango cairo fontconfig glib harfbuzz freetype; do
+            brew unlink "${formula}" >/dev/null 2>&1 || true
+          done
+          .test-direct-venv/bin/python -m pytest \
+            tests/runtime/test_direct_weasyprint_wheel.py -v -s
+
   release:
     name: Create GitHub release
     needs:
       - linux-wheel
       - windows-wheel
+      - macos-wheel
       - test-ubuntu
       - test-rocky
       - test-windows
+      - test-macos
       - test-direct-ubuntu
       - test-direct-rocky
       - test-direct-windows
+      - test-direct-macos
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
@@ -492,6 +633,20 @@ jobs:
         with:
           name: direct-weasyprint-windows-x86-64
           path: release-assets
+
+      - name: Download macOS arm64 wheels
+        uses: actions/download-artifact@v8
+        with:
+          pattern: "*-macos-arm64"
+          path: release-assets
+          merge-multiple: true
+
+      - name: Download macOS x86_64 wheels
+        uses: actions/download-artifact@v8
+        with:
+          pattern: "*-macos-x86_64"
+          path: release-assets
+          merge-multiple: true
 
       - name: Determine release settings
         id: release-settings

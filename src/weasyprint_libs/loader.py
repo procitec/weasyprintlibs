@@ -4,9 +4,14 @@ import ctypes
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 _ACTIVATED = False
-_LOADED_LIBRARIES: list[ctypes.CDLL] = []
+_LOADED_LIBRARIES: list[object] = []
+_DLL_DIRECTORY_HANDLES: list[object] = []
+
+_CFFI_DLOPEN_PATCHED = False
+_ORIGINAL_CFFI_DLOPEN: Any = None
 
 _WINDOWS_LIBRARIES = (
     "libglib-2.0-0.dll",
@@ -35,20 +40,73 @@ _LINUX_LIBRARIES = (
     "libpangocairo-1.0.so.0",
 )
 
+_MACOS_LIBRARY_ALIASES = {
+    # GObject
+    "libgobject-2.0-0": "libgobject-2.0.0.dylib",
+    "gobject-2.0-0": "libgobject-2.0.0.dylib",
+    "gobject-2.0": "libgobject-2.0.0.dylib",
+    "libgobject-2.0.so.0": "libgobject-2.0.0.dylib",
+    "libgobject-2.0.0.dylib": "libgobject-2.0.0.dylib",
+    "libgobject-2.0-0.dll": "libgobject-2.0.0.dylib",
+
+    # Pango
+    "libpango-1.0-0": "libpango-1.0.0.dylib",
+    "pango-1.0-0": "libpango-1.0.0.dylib",
+    "pango-1.0": "libpango-1.0.0.dylib",
+    "libpango-1.0.so.0": "libpango-1.0.0.dylib",
+    "libpango-1.0.dylib": "libpango-1.0.0.dylib",
+    "libpango-1.0-0.dll": "libpango-1.0.0.dylib",
+
+    # HarfBuzz
+    "libharfbuzz-0": "libharfbuzz.0.dylib",
+    "harfbuzz": "libharfbuzz.0.dylib",
+    "harfbuzz-0.0": "libharfbuzz.0.dylib",
+    "libharfbuzz.so.0": "libharfbuzz.0.dylib",
+    "libharfbuzz.0.dylib": "libharfbuzz.0.dylib",
+    "libharfbuzz-0.dll": "libharfbuzz.0.dylib",
+
+    # # HarfBuzz subset
+    # "libharfbuzz-subset-0": "libharfbuzz-subset.0.dylib",
+    # "harfbuzz-subset": "libharfbuzz-subset.0.dylib",
+    # "harfbuzz-subset-0.0": "libharfbuzz-subset.0.dylib",
+    # "libharfbuzz-subset.so.0": "libharfbuzz-subset.0.dylib",
+    # "libharfbuzz-subset.0.dylib": "libharfbuzz-subset.0.dylib",
+    # "libharfbuzz-subset-0.dll": "libharfbuzz-subset.0.dylib",
+
+    # Fontconfig
+    "libfontconfig-1": "libfontconfig.1.dylib",
+    "fontconfig-1": "libfontconfig.1.dylib",
+    "fontconfig": "libfontconfig.1.dylib",
+    "libfontconfig.so.1": "libfontconfig.1.dylib",
+    "libfontconfig.1.dylib": "libfontconfig.1.dylib",
+    "libfontconfig-1.dll": "libfontconfig.1.dylib",
+
+    # PangoFT2
+    "libpangoft2-1.0-0": "libpangoft2-1.0.0.dylib",
+    "pangoft2-1.0-0": "libpangoft2-1.0.0.dylib",
+    "pangoft2-1.0": "libpangoft2-1.0.0.dylib",
+    "libpangoft2-1.0.so.0": "libpangoft2-1.0.0.dylib",
+    "libpangoft2-1.0.dylib": "libpangoft2-1.0.0.dylib",
+    "libpangoft2-1.0-0.dll": "libpangoft2-1.0.0.dylib",
+}
+
 _MACOS_LIBRARIES = (
-    "libffi.8.dylib",
-    "libintl.8.dylib",
-    "libglib-2.0.0.dylib",
     "libgobject-2.0.0.dylib",
-    "libgio-2.0.0.dylib",
-    "libfontconfig.1.dylib",
-    "libfreetype.6.dylib",
-    "libharfbuzz.0.dylib",
-    "libcairo.2.dylib",
     "libpango-1.0.0.dylib",
+    "libharfbuzz.0.dylib",
+    "libfontconfig.1.dylib",
     "libpangoft2-1.0.0.dylib",
-    "libpangocairo-1.0.0.dylib",
 )
+
+
+def _runtime_root() -> Path:
+    module_dir = Path(__file__).resolve().parent
+    embedded_runtime = module_dir / "_weasyprint_libs"
+
+    if embedded_runtime.is_dir():
+        return embedded_runtime
+
+    return module_dir
 
 
 def activate() -> None:
@@ -57,7 +115,7 @@ def activate() -> None:
     if _ACTIVATED:
         return
 
-    root = Path(__file__).resolve().parent
+    root = _runtime_root()
 
     if sys.platform == "win32":
         _activate_windows(root)
@@ -138,9 +196,7 @@ def _configure_fontconfig(root: Path) -> None:
     os.environ.setdefault("FONTCONFIG_PATH", str(fonts_dir))
 
     cache_root = root / "cache"
-    cache_dir = cache_root / "fontconfig"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-
+    (cache_root / "fontconfig").mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("XDG_CACHE_HOME", str(cache_root))
 
 
@@ -148,14 +204,11 @@ def _activate_windows(root: Path) -> None:
     bin_dir = root / "bin"
     paths = _require_libraries(bin_dir, _WINDOWS_LIBRARIES)
 
-    os.environ.setdefault(
-        "WEASYPRINT_DLL_DIRECTORIES",
-        str(bin_dir),
-    )
+    os.environ.setdefault("WEASYPRINT_DLL_DIRECTORIES", str(bin_dir))
+    _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(str(bin_dir)))
 
-    with os.add_dll_directory(str(bin_dir)):
-        for path in paths:
-            _load_windows_library(path)
+    for path in paths:
+        _load_windows_library(path)
 
 
 def _activate_linux(root: Path) -> None:
@@ -166,9 +219,62 @@ def _activate_linux(root: Path) -> None:
         _load_local(path)
 
 
+def _patch_cffi_dlopen(lib_dir: Path) -> None:
+    global _CFFI_DLOPEN_PATCHED
+    global _ORIGINAL_CFFI_DLOPEN
+
+    if _CFFI_DLOPEN_PATCHED:
+        return
+
+    try:
+        import cffi
+    except ImportError:
+        # The package can be inspected before WeasyPrint and cffi are installed.
+        return
+
+    original_dlopen = cffi.FFI.dlopen
+    _ORIGINAL_CFFI_DLOPEN = original_dlopen
+
+    def bundled_dlopen(
+        ffi_instance: cffi.FFI,
+        name: str | bytes | None,
+        flags: int = 0,
+    ) -> Any:
+        if isinstance(name, bytes):
+            lookup_name = name.decode(
+                sys.getfilesystemencoding(),
+                errors="surrogateescape",
+            )
+        else:
+            lookup_name = name
+
+        if isinstance(lookup_name, str):
+            bundled_name = _MACOS_LIBRARY_ALIASES.get(lookup_name)
+
+            if bundled_name is not None:
+                bundled_path = lib_dir / bundled_name
+
+                if bundled_path.is_file():
+                    return original_dlopen(
+                        ffi_instance,
+                        str(bundled_path),
+                        flags,
+                    )
+
+        return original_dlopen(
+            ffi_instance,
+            name,
+            flags,
+        )
+
+    cffi.FFI.dlopen = bundled_dlopen
+    _CFFI_DLOPEN_PATCHED = True
+
 def _activate_macos(root: Path) -> None:
     _configure_fontconfig(root)
 
     lib_dir = root / "lib"
     for path in _require_libraries(lib_dir, _MACOS_LIBRARIES):
         _load_local(path)
+
+    _patch_cffi_dlopen(lib_dir)

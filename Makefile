@@ -81,3 +81,29 @@ windows-wheel: windows-stage
 windows-patched-wheel: windows-stage
 	rm -rf dist
 	$(UV_RUN) python scripts/patch_weasyprint_wheel.py --version $(WEASYPRINT_VERSION) --platform-tag win_amd64
+
+MACOS_ARCH := $(shell uname -m)
+ifeq ($(MACOS_ARCH),arm64)
+MACOS_PLATFORM_TAG := macosx_11_0_arm64
+else ifeq ($(MACOS_ARCH),x86_64)
+MACOS_PLATFORM_TAG := macosx_11_0_x86_64
+else
+MACOS_PLATFORM_TAG := unsupported
+endif
+
+macos-stage:
+	$(UV_RUN) python scripts/stage_macos_wheel.py
+
+macos-wheel: macos-stage
+	rm -rf dist
+	WHEEL_PLATFORM_TAG=$(MACOS_PLATFORM_TAG) $(UV) build --wheel
+	$(UV_RUN) python scripts/verify_pth_wheel.py
+	$(UV_RUN) python scripts/verify_macos_wheel.py $$(find dist -maxdepth 1 -name '*.whl' -print -quit) --arch $(MACOS_ARCH)
+
+macos-patched-wheel: macos-stage
+	rm -rf dist-direct
+	$(UV_RUN) python scripts/patch_weasyprint_wheel.py --version $(WEASYPRINT_VERSION) --platform-tag $(MACOS_PLATFORM_TAG) --output-dir dist-direct
+	$(UV_RUN) python scripts/verify_macos_wheel.py $$(find dist-direct -maxdepth 1 -name 'weasyprint-*.whl' -print -quit) --arch $(MACOS_ARCH)
+
+macos-verify:
+	$(UV_RUN) python scripts/verify_macos_wheel.py $$(find dist -maxdepth 1 -name '*.whl' -print -quit) --arch $(MACOS_ARCH)

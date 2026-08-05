@@ -5,6 +5,7 @@ import platform
 import sys
 from pathlib import Path
 
+import pytest
 from pypdf import PdfReader
 
 HERE = Path(__file__).resolve().parent
@@ -12,7 +13,7 @@ OUTPUT_DIR = HERE / "_output"
 
 
 def dump_loaded_libraries() -> None:
-    if sys.platform == "win32":
+    if sys.platform in {"win32", "darwin"}:
         return
 
     interesting = (
@@ -47,6 +48,29 @@ def dump_loaded_libraries() -> None:
     print("\nLoaded native libraries:")
     for path in sorted(paths):
         print(f"  {path}")
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="macOS-specific test",
+)
+def test_macos_cffi_uses_bundled_gobject() -> None:
+
+    import cffi
+
+    import weasyprint_libs
+    import weasyprint_libs.loader as loader
+
+    root = Path(weasyprint_libs.__file__).resolve().parent
+    expected = root / "lib" / "libgobject-2.0.0.dylib"
+
+    assert loader._ACTIVATED
+    assert expected.is_file()
+
+    ffi = cffi.FFI()
+    library = ffi.dlopen("libgobject-2.0-0")
+
+    assert library is not None
 
 
 def test_weasyprint_runtime() -> None:

@@ -53,6 +53,22 @@ def test_direct_weasyprint_wheel_builds_document_without_legacy_wheel() -> None:
         native_dir = runtime_dir / "bin"
         assert os.environ.get("WEASYPRINT_DLL_DIRECTORIES") == str(native_dir)
         assert any(native_dir.glob("*.dll"))
+    elif sys.platform == "darwin":
+        native_dir = runtime_dir / "lib"
+
+        assert any(native_dir.glob("*.dylib"))
+        assert _weasyprint_libs_loader._CFFI_DLOPEN_PATCHED is True
+
+        expected = native_dir / "libgobject-2.0.0.dylib"
+        assert expected.is_file()
+
+        import cffi
+
+        ffi = cffi.FFI()
+        library = ffi.dlopen("libgobject-2.0-0")
+
+        assert library is not None
+
     else:
         native_dir = runtime_dir / "lib"
         assert any(native_dir.glob("*.so*"))

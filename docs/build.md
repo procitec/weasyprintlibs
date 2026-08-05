@@ -68,5 +68,7 @@ GitHub Actions test:
 - Rocky Linux 8;
 - Rocky Linux 9;
 - Windows x86-64.
+- MacOS x86-64.
+- MacOS arm64.
 
 A successful build on the build image alone is insufficient. The Rocky tests are important because they reveal accidental dependencies on newer system libraries.

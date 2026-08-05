@@ -10,6 +10,8 @@ The package installs a `.pth` file that activates the bundled runtime automatica
 |---|---|---|
 | Linux x86-64 | `manylinux_2_28_x86_64` | Libraries built from pinned source archives |
 | Windows x86-64 | `win_amd64` | Locked MSYS2/MinGW runtime packages |
+| macOS Apple Silicon | `macosx_11_0_arm64` | Relocated Homebrew runtime |
+| macOS Intel | `macosx_11_0_x86_64` | Relocated Homebrew runtime |
 
 The Linux baseline targets glibc 2.28 and newer systems, including RHEL/Rocky Linux 8 and later.
 
@@ -25,6 +27,12 @@ Windows:
 
 ```powershell
 .\scripts\build_windows.ps1
+```
+
+macOS:
+
+```bash
+./scripts/build_macos.sh
 ```
 
 Generated wheels are written to `dist/`.
@@ -77,6 +85,7 @@ The complete platform matrix is tested by GitHub Actions on Ubuntu, Rocky Linux 
 - [Build and test workflow](docs/build.md)
 - [Directly patched WeasyPrint wheel](docs/direct-weasyprint-wheel.md)
 - [Runtime activation](docs/runtime.md)
+- [macOS wheels](docs/macos.md)
 - [Licensing and redistribution](docs/licensing.md)
 - [Bundled third-party libraries](THIRD_PARTY_LICENSES.md)
 
