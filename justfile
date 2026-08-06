@@ -45,6 +45,14 @@ native-build:
 stage profile="x86_64":
     {{uv}} run python -m scripts stage --profile "{{profile}}"
 
+# Collect exact third-party license texts for the staged runtime.
+licenses profile="x86_64":
+    {{uv}} run python -m scripts licenses --profile "{{profile}}"
+
+# Verify a generated third-party license bundle.
+verify-licenses path="_build/licenses":
+    {{uv}} run python -m scripts verify-licenses "{{path}}" --runtime _build/runtime
+
 # Build and verify a bundled WeasyPrint wheel for the current platform.
 build version="69.0" profile="x86_64":
     {{uv}} sync --frozen

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Generate platform-specific third-party license bundles from exact Linux source archives,
+  locked MSYS2 packages and installed Homebrew kegs.
+- Embed license texts and a runtime-to-component manifest in every patched wheel.
+- Upload matching third-party license ZIP files with CI and GitHub release artifacts.
+
 ## 26.1.2
 
 - Removed the standalone `weasyprint-libs` wheel and `.pth` activation path.

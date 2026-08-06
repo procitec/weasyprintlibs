@@ -16,10 +16,12 @@ Two architecture-specific wheels are produced:
 1. locate the Pango, Cairo, Fontconfig, FreeType and HarfBuzz seed libraries;
 2. read their Mach-O dependencies recursively with `otool -L`;
 3. copy every Homebrew dependency into `_build/runtime/lib`;
-4. replace Homebrew install names with `@loader_path/<name>`;
-5. set each bundled dylib ID to `@loader_path/<name>`;
-6. ad-hoc sign the modified dylibs;
-7. copy Fontconfig configuration and install a relocatable `fonts.conf`.
+4. record each copied dylib's original Cellar path in
+   `_build/runtime-provenance.json` for license collection;
+5. replace Homebrew install names with `@loader_path/<name>`;
+6. set each bundled dylib ID to `@loader_path/<name>`;
+7. ad-hoc sign the modified dylibs;
+8. copy Fontconfig configuration and install a relocatable `fonts.conf`.
 
 Dependencies from `/usr/lib` and `/System/Library` remain system dependencies. Any other dependency outside the Homebrew prefix causes the build to fail.
 
@@ -32,3 +34,8 @@ Dependencies from `/usr/lib` and `/System/Library` remain system dependencies. A
 - only `@loader_path`, `/usr/lib`, or `/System/Library` dependencies.
 
 The GitHub runtime tests unlink the Homebrew libraries before rendering a PDF. This prevents an incomplete wheel from silently using the build host's Pango installation.
+
+The license collector groups the provenance records by Homebrew keg, copies
+installed license files where available, and otherwise downloads the exact
+checksummed upstream source declared by the formula to extract the license
+texts.

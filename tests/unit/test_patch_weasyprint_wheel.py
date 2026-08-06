@@ -38,6 +38,39 @@ def test_build_wheel_embeds_runtime_and_updates_metadata(tmp_path: Path) -> None
     (runtime / "etc" / "fonts").mkdir(parents=True)
     (runtime / "etc" / "fonts" / "fonts.conf").write_text("<fontconfig/>")
 
+    licenses = tmp_path / "licenses"
+    (licenses / "texts" / "example").mkdir(parents=True)
+    (licenses / "PROJECT_LICENSE.txt").write_text("project license\n")
+    (licenses / "THIRD_PARTY_LICENSES.md").write_text("# Licenses\n")
+    (licenses / "texts" / "example" / "LICENSE").write_text("example license\n")
+    (licenses / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "platform": "linux",
+                "platform_tag": "manylinux_2_28_x86_64",
+                "project": {
+                    "name": "test-builder",
+                    "version": "26.1.1",
+                    "license": "MIT",
+                    "license_file": "PROJECT_LICENSE.txt",
+                },
+                "components": [
+                    {
+                        "name": "example",
+                        "version": "1.0",
+                        "type": "upstream-source",
+                        "license_expression": "MIT",
+                        "license_files": ["texts/example/LICENSE"],
+                        "runtime_files": ["lib/libexample.so.1"],
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
     output = build_wheel(
         source,
         runtime,
@@ -45,6 +78,7 @@ def test_build_wheel_embeds_runtime_and_updates_metadata(tmp_path: Path) -> None
         "manylinux_2_28_x86_64",
         "69.0",
         "26.1.1",
+        licenses,
     )
 
     verify_wheel(output)
@@ -58,6 +92,7 @@ def test_build_wheel_embeds_runtime_and_updates_metadata(tmp_path: Path) -> None
         assert "weasyprint/_weasyprint_libs/lib/libexample.so.1" in names
         assert "weasyprint/_weasyprint_libs_loader.py" in names
         assert "weasyprint/_weasyprint_libs_config.py" in names
+        assert any(name.endswith(".dist-info/licenses/manifest.json") for name in names)
 
         runtime_name = next(
             name for name in names if name.endswith(".dist-info/BUNDLED-RUNTIME.json")

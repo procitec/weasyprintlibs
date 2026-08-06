@@ -18,7 +18,7 @@ Importing `weasyprint` activates the runtime embedded below
 The generated version uses a PEP 440 local version identifier, for example:
 
 ```text
-weasyprint-69.0+bundled.26.1.1-py3-none-manylinux_2_28_x86_64.whl
+weasyprint-69.0+bundled.<release>-py3-none-manylinux_2_28_x86_64.whl
 ```
 
 ## Build
@@ -27,7 +27,9 @@ weasyprint-69.0+bundled.26.1.1-py3-none-manylinux_2_28_x86_64.whl
 just build "69.0" x86_64
 ```
 
-Generated wheels are written to `dist/`.
+Generated wheels and matching `third-party-licenses-<platform-tag>.zip` archives are
+written to `dist/`. The same license bundle is embedded in the wheel under
+`.dist-info/licenses/`.
 
 ## Local tests
 
@@ -41,13 +43,13 @@ Build the complete Linux wheel, install it into a clean virtual environment and
 render the test document without `full_fonts=True`:
 
 ```bash
-make test-unit
+just local-test
 ```
 
 Test an already built wheel without rebuilding the native stack:
 
 ```bash
-make test-wheel
+just test-wheel
 ```
 
 ## Documentation
@@ -62,5 +64,6 @@ make test-wheel
 ## License
 
 The project-specific Python and build code is licensed under the [MIT License](LICENSE).
-Bundled third-party libraries retain their respective licenses; see
-[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+Bundled third-party libraries retain their respective licenses. Their exact
+platform-specific texts and runtime mappings are generated during every build;
+see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

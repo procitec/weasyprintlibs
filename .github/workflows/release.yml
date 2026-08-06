@@ -62,7 +62,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: weasyprint-manylinux-2-28-x86-64
-          path: dist/weasyprint-*.whl
+          path: |
+            dist/weasyprint-*.whl
+            dist/third-party-licenses-*.zip
           if-no-files-found: error
 
   windows-wheel:
@@ -94,7 +96,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: weasyprint-windows-x86-64
-          path: dist/weasyprint-*.whl
+          path: |
+            dist/weasyprint-*.whl
+            dist/third-party-licenses-*.zip
           if-no-files-found: error
 
   macos-wheel:
@@ -130,7 +134,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: weasyprint-macos-${{ matrix.arch }}
-          path: dist/weasyprint-*.whl
+          path: |
+            dist/weasyprint-*.whl
+            dist/third-party-licenses-*.zip
           if-no-files-found: error
 
   test-ubuntu:
@@ -276,7 +282,9 @@ jobs:
       - name: Validate release assets
         run: |
           find release-assets -maxdepth 1 -name 'weasyprint-*.whl' -print
+          find release-assets -maxdepth 1 -name 'third-party-licenses-*.zip' -print
           test "$(find release-assets -maxdepth 1 -name 'weasyprint-*.whl' | wc -l)" -eq 4
+          test "$(find release-assets -maxdepth 1 -name 'third-party-licenses-*.zip' | wc -l)" -eq 4
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -287,6 +295,7 @@ jobs:
           args=(
             release create "${release_tag}"
             release-assets/*.whl
+            release-assets/third-party-licenses-*.zip
             --target "${GITHUB_SHA}"
             --generate-notes
             --title "${release_tag}"

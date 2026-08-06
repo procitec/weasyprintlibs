@@ -17,6 +17,9 @@ archive = "zlib-1.3.1.tar.gz"
 checksum = "sha256:9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
 build_system = "cmake"
 cmake = ["-DZLIB_BUILD_EXAMPLES=OFF", "-DBUILD_SHARED_LIBS=ON"]
+license_expression = "Zlib"
+license_files = ["LICENSE"]
+runtime_patterns = ["lib/libz.so*"]
 
 [[library]]
 name = "libffi"
@@ -26,6 +29,9 @@ archive = "libffi-3.5.0.tar.gz"
 checksum = "unlocked"
 build_system = "autotools"
 configure = ["--disable-static", "--enable-shared", "--disable-docs"]
+license_expression = "MIT"
+license_files = ["LICENSE"]
+runtime_patterns = ["lib/libffi.so*"]
 
 [[library]]
 name = "pcre2"
@@ -35,6 +41,9 @@ archive = "pcre2-10.47.tar.bz2"
 checksum = "unlocked"
 build_system = "cmake"
 cmake = ["-DBUILD_SHARED_LIBS=ON", "-DPCRE2_BUILD_PCRE2_8=ON", "-DPCRE2_BUILD_PCRE2_16=OFF", "-DPCRE2_BUILD_PCRE2_32=OFF", "-DPCRE2_BUILD_TESTS=OFF", "-DPCRE2_BUILD_PCRE2GREP=OFF", "-DPCRE2_SUPPORT_JIT=OFF"]
+license_expression = "BSD-3-Clause"
+license_files = ["LICENCE.md", "COPYING"]
+runtime_patterns = ["lib/libpcre2-8.so*", "lib/libpcre2-posix.so*"]
 
 [[library]]
 name = "expat"
@@ -44,6 +53,9 @@ archive = "expat-2.8.2.tar.xz"
 checksum = "unlocked"
 build_system = "cmake"
 cmake = ["-DBUILD_SHARED_LIBS=ON", "-DEXPAT_BUILD_DOCS=OFF", "-DEXPAT_BUILD_EXAMPLES=OFF", "-DEXPAT_BUILD_TESTS=OFF", "-DEXPAT_BUILD_TOOLS=OFF"]
+license_expression = "MIT"
+license_files = ["COPYING"]
+runtime_patterns = ["lib/libexpat.so*"]
 
 [[library]]
 name = "glib"
@@ -53,6 +65,17 @@ archive = "glib-2.84.4.tar.xz"
 checksum = "sha256:8a9ea10943c36fc117e253f80c91e477b673525ae45762942858aef57631bb90"
 build_system = "meson"
 meson = ["-Dtests=false", "-Dinstalled_tests=false", "-Dintrospection=disabled", "-Ddocumentation=false", "-Dman-pages=disabled", "-Dsysprof=disabled", "-Dlibmount=disabled", "-Dselinux=disabled", "-Dnls=disabled"]
+license_expression = "LGPL-2.1-or-later"
+license_files = ["COPYING"]
+runtime_patterns = [
+    "lib/libgio-2.0.so*",
+    "lib/libgirepository-2.0.so*",
+    "lib/libglib-2.0.so*",
+    "lib/libgmodule-2.0.so*",
+    "lib/libgobject-2.0.so*",
+    "lib/libgthread-2.0.so*",
+]
+corresponding_source_required = true
 
 [[library]]
 name = "libpng"
@@ -62,6 +85,9 @@ archive = "libpng-1.6.50.tar.xz"
 checksum = "unlocked"
 build_system = "cmake"
 cmake = ["-DPNG_SHARED=ON", "-DPNG_STATIC=OFF", "-DPNG_TESTS=OFF", "-DPNG_TOOLS=OFF"]
+license_expression = "libpng-2.0"
+license_files = ["LICENSE"]
+runtime_patterns = ["lib/libpng*.so*"]
 
 [[library]]
 name = "freetype"
@@ -71,6 +97,11 @@ archive = "freetype-2.13.3.tar.xz"
 checksum = "sha256:0550350666d427c74daeb85d5ac7bb353acba5f76956395995311a9c6f063289"
 build_system = "meson"
 meson = ["-Dzlib=enabled", "-Dpng=enabled", "-Dbzip2=disabled", "-Dbrotli=disabled", "-Dharfbuzz=disabled", "-Dtests=disabled"]
+license_expression = "FTL OR GPL-2.0-only"
+redistribution_license = "FTL"
+license_files = ["docs/FTL.TXT", "docs/GPLv2.TXT"]
+runtime_patterns = ["lib/libfreetype.so*"]
+corresponding_source_required = false
 
 [[library]]
 name = "fontconfig"
@@ -80,6 +111,9 @@ archive = "fontconfig-2.17.1.tar.xz"
 checksum = "unlocked"
 build_system = "autotools"
 configure = ["--disable-static", "--enable-shared", "--disable-docs", "--disable-nls", "--with-cache-dir=/tmp/fontconfig-cache"]
+license_expression = "MIT"
+license_files = ["COPYING"]
+runtime_patterns = ["lib/libfontconfig.so*"]
 
 [[library]]
 name = "pixman"
@@ -89,6 +123,9 @@ archive = "pixman-0.46.4.tar.xz"
 checksum = "sha512:83b133e7969ba34f883f4e08dcc5d388c4397f43ce836c191c05945fe77c16ff501d531600780c12678a0d08105828a6bdeff2156b63f9c1a84087bc7f40ae9f"
 build_system = "meson"
 meson = ["-Dtests=disabled", "-Ddemos=disabled"]
+license_expression = "MIT"
+license_files = ["COPYING"]
+runtime_patterns = ["lib/libpixman-1.so*"]
 
 [[library]]
 name = "cairo"
@@ -98,6 +135,11 @@ archive = "cairo-1.18.4.tar.xz"
 checksum = "sha256:445ed8208a6e4823de1226a74ca319d3600e83f6369f99b14265006599c32ccb"
 build_system = "meson"
 meson = ["-Dtests=disabled", "-Dspectre=disabled", "-Dsymbol-lookup=disabled", "-Dgtk2-utils=disabled", "-Dxlib=disabled", "-Dxcb=disabled", "-Dtee=disabled", "-Dfontconfig=enabled", "-Dfreetype=enabled", "-Dpng=enabled", "-Dzlib=enabled", "-Dglib=enabled"]
+license_expression = "LGPL-2.1-only OR MPL-1.1"
+redistribution_license = "LGPL-2.1-only"
+license_files = ["COPYING-LGPL-2.1", "COPYING-MPL-1.1"]
+runtime_patterns = ["lib/libcairo*.so*"]
+corresponding_source_required = true
 
 [[library]]
 name = "fribidi"
@@ -107,6 +149,10 @@ archive = "fribidi-1.0.16.tar.xz"
 checksum = "unlocked"
 build_system = "meson"
 meson = ["-Ddocs=false", "-Dbin=false", "-Dtests=false"]
+license_expression = "LGPL-2.1-or-later"
+license_files = ["COPYING"]
+runtime_patterns = ["lib/libfribidi.so*"]
+corresponding_source_required = true
 
 [[library]]
 name = "harfbuzz"
@@ -116,6 +162,9 @@ archive = "harfbuzz-14.2.1.tar.xz"
 checksum = "unlocked"
 build_system = "meson"
 meson = ["-Dtests=disabled", "-Ddocs=disabled", "-Dutilities=disabled", "-Dintrospection=disabled", "-Dicu=disabled", "-Dgraphite2=disabled", "-Dglib=enabled", "-Dgobject=enabled", "-Dfreetype=enabled", "-Dcairo=enabled"]
+license_expression = "MIT"
+license_files = ["COPYING"]
+runtime_patterns = ["lib/libharfbuzz*.so*"]
 
 [[library]]
 name = "pango"
@@ -125,3 +174,7 @@ archive = "pango-1.58.0.tar.xz"
 checksum = "unlocked"
 build_system = "meson"
 meson = ["-Ddocumentation=false", "-Dman-pages=false", "-Dbuild-testsuite=false", "-Dbuild-examples=false", "-Dintrospection=disabled", "-Dxft=disabled", "-Dfontconfig=enabled", "-Dfreetype=enabled", "-Dcairo=enabled", "-Dlibthai=disabled"]
+license_expression = "LGPL-2.1-or-later"
+license_files = ["COPYING"]
+runtime_patterns = ["lib/libpango*.so*"]
+corresponding_source_required = true

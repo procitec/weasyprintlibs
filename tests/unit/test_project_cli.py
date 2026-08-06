@@ -27,6 +27,15 @@ def test_build_command_defaults() -> None:
     assert args.platform_tag is None
 
 
+def test_licenses_command_defaults() -> None:
+    args = project.build_parser().parse_args(["licenses"])
+
+    assert args.profile == "x86_64"
+    assert args.platform is None
+    assert args.platform_tag is None
+    assert args.no_archive is False
+
+
 def test_dry_run_does_not_execute_process(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("subprocess.run must not be called")

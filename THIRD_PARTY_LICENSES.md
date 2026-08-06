@@ -1,49 +1,61 @@
-# Third-party libraries
+# Third-party licenses
 
-The generated wheels redistribute native libraries. The table below documents the explicitly configured rendering stack. Versions must remain synchronized with `config/libraries.toml` and the Windows package lock.
+The generated WeasyPrint wheels redistribute native libraries. Their license
+inventory is generated separately for every platform build from the exact
+sources that contributed files to the wheel.
 
-| Component | Version in current Linux configuration | License identifier / family | Notes |
-|---|---:|---|---|
-| zlib | 1.3.1 | Zlib | Preserve the upstream notice. |
-| libffi | 3.5.0 | MIT | Preserve copyright and permission notice. |
-| PCRE2 | 10.47 | BSD-3-Clause | Verify the exact upstream COPYING text. |
-| Expat | 2.8.2 | MIT | Preserve copyright and permission notice. |
-| GLib | 2.84.4 | LGPL-2.1-or-later | Shared-library redistribution and corresponding-source obligations apply. |
-| libpng | 1.6.50 | libpng-2.0 | Preserve the upstream license and notices. |
-| FreeType | 2.13.3 | FTL OR GPL-2.0-only | The build should document which licensing option is relied upon; FTL is commonly selected for binary redistribution. |
-| Fontconfig | 2.17.1 | MIT | Preserve copyright and permission notice. |
-| Pixman | 0.46.4 | MIT | Preserve copyright and permission notice. |
-| Cairo | 1.18.4 | LGPL-2.1-or-later OR MPL-1.1 | Document the chosen redistribution basis. |
-| FriBidi | 1.0.16 | LGPL-2.1-or-later | Corresponding-source obligations apply. |
-| HarfBuzz | 14.2.1 | MIT | The exact COPYING file contains multiple copyright notices. |
-| Pango | 1.58.0 | LGPL-2.1-or-later | Corresponding-source obligations apply. |
+## Generated artifacts
 
-## Important limitations
-
-This table is not a substitute for the complete license texts and notices from the exact source releases.
-
-The Windows wheel is assembled from a transitive MSYS2 dependency closure and may contain additional runtime DLLs. Review every package in `config/windows-packages.lock.toml` and every DLL staged into the wheel. Add all additional components and their notices before release.
-
-## Packaging recommendation
-
-Store exact upstream license files under a structure such as:
+Every successful build creates:
 
 ```text
-licenses/
-  zlib/LICENSE
-  libffi/LICENSE
-  pcre2/COPYING
-  expat/COPYING
-  glib/COPYING
-  libpng/LICENSE
-  freetype/FTL.TXT
-  fontconfig/COPYING
-  pixman/COPYING
-  cairo/COPYING-LGPL-2.1
-  cairo/COPYING-MPL-1.1
-  fribidi/COPYING
-  harfbuzz/COPYING
-  pango/COPYING
+_build/licenses/
+  PROJECT_LICENSE.txt
+  THIRD_PARTY_LICENSES.md
+  manifest.json
+  texts/<component>/...
+
+dist/third-party-licenses-<platform-tag>.zip
 ```
 
-Include this directory in both the source distribution and built wheels. Prefer copying these files from the exact downloaded source archives during staging, so the notices cannot drift from the bundled versions.
+The same directory is embedded into the wheel below
+`weasyprint-<version>.dist-info/licenses/`. The ZIP file is uploaded next to the
+wheel in CI and attached to GitHub releases.
+
+`manifest.json` maps each packaged `.so`, `.dll`, `.dylib` or diagnostic
+executable to the source archive, MSYS2 package or Homebrew formula that
+provided it. The build fails if a native runtime file has no owner or a
+contributing component has no copied license text.
+
+## Platform sources
+
+- **Linux:** license expressions, exact license paths and runtime patterns are
+  declared beside each component in `config/libraries.toml`. Texts are copied
+  from the downloaded source archives after their SHA-256 values are checked
+  against `config/source-lock.generated.toml`.
+- **Windows:** DLL ownership, package versions, declared licenses and license
+  texts are read from the locked MSYS2 package archives in
+  `config/windows-packages.lock.toml`.
+- **macOS:** Dylib ownership is recorded while staging the Homebrew runtime.
+  Formula metadata and installed license files are then collected from the
+  exact Homebrew kegs that supplied the libraries. If a keg contains no license
+  text, the checksummed upstream source recorded by the formula is used as a
+  fallback.
+
+## Commands
+
+After staging a runtime, regenerate and verify its license bundle with:
+
+```bash
+just licenses
+just verify-licenses
+```
+
+A normal `just build` performs these steps automatically.
+
+## Scope
+
+The repository's own code and documentation are licensed under MIT. Bundled
+native libraries retain their respective upstream licenses. The generated
+inventory and copied texts support redistribution review but do not replace a
+legal assessment or any required corresponding-source publication.

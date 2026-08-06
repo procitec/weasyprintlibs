@@ -55,7 +55,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: weasyprint-manylinux-2-28-x86-64
-          path: dist/weasyprint-*.whl
+          path: |
+            dist/weasyprint-*.whl
+            dist/third-party-licenses-*.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -92,7 +94,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: weasyprint-windows-x86-64
-          path: dist/weasyprint-*.whl
+          path: |
+            dist/weasyprint-*.whl
+            dist/third-party-licenses-*.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -130,7 +134,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: weasyprint-macos-${{ matrix.arch }}
-          path: dist/weasyprint-*.whl
+          path: |
+            dist/weasyprint-*.whl
+            dist/third-party-licenses-*.zip
           if-no-files-found: error
           retention-days: 14
 
