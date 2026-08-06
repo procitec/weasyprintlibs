@@ -166,6 +166,48 @@ def verify_runtime(runner: Runner, target: str) -> None:
     )
 
 
+def collect_licenses(
+    runner: Runner,
+    *,
+    target: str,
+    profile: str,
+    platform_tag: str,
+    archive: bool = True,
+) -> None:
+    args: list[str | Path] = [
+        "--platform",
+        target,
+        "--platform-tag",
+        platform_tag,
+        "--profile",
+        profile,
+        "--runtime",
+        "_build/runtime",
+        "--output",
+        "_build/licenses",
+    ]
+    if archive:
+        args.extend(
+            [
+                "--archive",
+                f"dist/third-party-licenses-{platform_tag}.zip",
+            ]
+        )
+    runner.python_script("collect_licenses.py", *args)
+
+
+def verify_licenses(
+    runner: Runner,
+    path: Path = Path("_build/licenses"),
+    *,
+    runtime: Path | None = None,
+) -> None:
+    args: list[str | Path] = [path]
+    if runtime is not None:
+        args.extend(["--runtime", runtime])
+    runner.python_script("verify_license_bundle.py", *args)
+
+
 def stage_linux(runner: Runner) -> None:
     runtime_config_check(runner)
     runner.python_script("stage_wheel.py")
@@ -226,12 +268,20 @@ def build_wheel(
 
     tag = resolve_platform_tag(runner, target, profile, platform_tag)
     remove_paths([Path("dist")])
+    collect_licenses(
+        runner,
+        target=target,
+        profile=profile,
+        platform_tag=tag,
+    )
     runner.python_script(
         "patch_weasyprint_wheel.py",
         "--version",
         version,
         "--platform-tag",
         tag,
+        "--licenses",
+        "_build/licenses",
     )
     verify_wheel(runner)
 
@@ -335,6 +385,31 @@ def build_parser() -> argparse.ArgumentParser:
     build_parser.add_argument("--profile", default=DEFAULT_WINDOWS_PROFILE)
     build_parser.add_argument("--platform-tag")
 
+    licenses_parser = subparsers.add_parser(
+        "licenses",
+        help="Collect licenses for the already staged runtime.",
+    )
+    licenses_parser.add_argument("--profile", default=DEFAULT_WINDOWS_PROFILE)
+    licenses_parser.add_argument(
+        "--platform",
+        choices=("linux", "windows", "macos"),
+        default=None,
+    )
+    licenses_parser.add_argument("--platform-tag")
+    licenses_parser.add_argument("--no-archive", action="store_true")
+
+    verify_licenses_parser = subparsers.add_parser(
+        "verify-licenses",
+        help="Verify a generated third-party license bundle.",
+    )
+    verify_licenses_parser.add_argument(
+        "path",
+        nargs="?",
+        type=Path,
+        default=Path("_build/licenses"),
+    )
+    verify_licenses_parser.add_argument("--runtime", type=Path)
+
     subparsers.add_parser("verify-sources", help="Verify downloaded source archives.")
 
     verify_runtime_parser = subparsers.add_parser(
@@ -406,6 +481,20 @@ def main(argv: Sequence[str] | None = None) -> None:
             profile=args.profile,
             platform_tag=args.platform_tag,
         )
+    elif args.command == "licenses":
+        target = args.platform or host_platform()
+        tag = resolve_platform_tag(runner, target, args.profile, args.platform_tag)
+        if not args.no_archive:
+            (ROOT / "dist").mkdir(parents=True, exist_ok=True)
+        collect_licenses(
+            runner,
+            target=target,
+            profile=args.profile,
+            platform_tag=tag,
+            archive=not args.no_archive,
+        )
+    elif args.command == "verify-licenses":
+        verify_licenses(runner, args.path, runtime=args.runtime)
     elif args.command == "verify-sources":
         fetch_sources(runner)
     elif args.command == "verify-runtime":

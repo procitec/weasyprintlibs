@@ -42,6 +42,9 @@ def verify_wheel(wheel: Path) -> None:
         runtime_metadata_names = [
             name for name in names if name.endswith(".dist-info/BUNDLED-RUNTIME.json")
         ]
+        license_manifest_names = [
+            name for name in names if name.endswith(".dist-info/licenses/manifest.json")
+        ]
         if not all(
             len(items) == 1
             for items in (
@@ -49,6 +52,7 @@ def verify_wheel(wheel: Path) -> None:
                 wheel_names,
                 record_names,
                 runtime_metadata_names,
+                license_manifest_names,
             )
         ):
             raise RuntimeError("Wheel metadata layout is incomplete or ambiguous")
@@ -73,6 +77,29 @@ def verify_wheel(wheel: Path) -> None:
             raise RuntimeError("BUNDLED-RUNTIME.json version does not match the wheel")
         if runtime_metadata.get("platform_tag") != platform_tag:
             raise RuntimeError("BUNDLED-RUNTIME.json platform does not match the wheel")
+        if runtime_metadata.get("license_manifest") != "licenses/manifest.json":
+            raise RuntimeError("BUNDLED-RUNTIME.json has no license manifest reference")
+
+        license_manifest_name = license_manifest_names[0]
+        license_prefix = license_manifest_name.removesuffix("manifest.json")
+        license_manifest = json.loads(archive.read(license_manifest_name))
+        if license_manifest.get("platform_tag") != platform_tag:
+            raise RuntimeError("License manifest platform does not match the wheel")
+        for required_license_file in (
+            "PROJECT_LICENSE.txt",
+            "THIRD_PARTY_LICENSES.md",
+        ):
+            if license_prefix + required_license_file not in names:
+                raise RuntimeError(
+                    f"Wheel license bundle is missing {required_license_file}"
+                )
+
+        manifest_runtime_files: set[str] = set()
+        for component in license_manifest.get("components", []):
+            for relative in component.get("license_files", []):
+                if license_prefix + relative not in names:
+                    raise RuntimeError(f"Wheel is missing copied license text: {relative}")
+            manifest_runtime_files.update(component.get("runtime_files", []))
 
         required = {
             "weasyprint/_weasyprint_libs_loader.py",
@@ -85,6 +112,23 @@ def verify_wheel(wheel: Path) -> None:
         has_dlls = any(name.startswith("weasyprint/_weasyprint_libs/bin/") for name in names)
         if not has_libs and not has_dlls:
             raise RuntimeError("Patched wheel contains no native runtime payload")
+
+        runtime_prefix = "weasyprint/_weasyprint_libs/"
+        wheel_runtime_files = {
+            name.removeprefix(runtime_prefix)
+            for name in names
+            if name.startswith(runtime_prefix)
+            and (
+                ".so" in Path(name).name
+                or Path(name).suffix.lower() in {".dll", ".dylib", ".exe"}
+            )
+        }
+        if wheel_runtime_files != manifest_runtime_files:
+            raise RuntimeError(
+                "Wheel runtime/license mapping mismatch: "
+                f"unmapped={sorted(wheel_runtime_files - manifest_runtime_files)}, "
+                f"missing={sorted(manifest_runtime_files - wheel_runtime_files)}"
+            )
         if any(name.startswith("weasyprint_libs/") for name in names):
             raise RuntimeError("Legacy standalone package is still present in the wheel")
         if any(name.endswith("weasyprint_libs.pth") for name in names):

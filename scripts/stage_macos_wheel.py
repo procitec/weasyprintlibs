@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import subprocess
@@ -167,6 +168,20 @@ def stage(runtime_root: Path) -> None:
     for destination_name, source in sorted(libraries.items()):
         shutil.copy2(source.resolve(), lib_destination / destination_name)
 
+    provenance = {
+        "platform": "macos",
+        "homebrew_prefix": str(prefix),
+        "files": {
+            f"lib/{destination_name}": {"source": str(source.resolve())}
+            for destination_name, source in sorted(libraries.items())
+        },
+    }
+    provenance_path = runtime_root.parent / "runtime-provenance.json"
+    provenance_path.write_text(
+        json.dumps(provenance, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
     bundled_names = set(libraries)
     for library in sorted(lib_destination.glob("*.dylib")):
         patch_library(library, bundled_names)
@@ -176,7 +191,7 @@ def stage(runtime_root: Path) -> None:
 
     print(
         f"Staged {len(libraries)} Homebrew libraries from {prefix} into {lib_destination}; "
-        f"verified {len(required)} runtime entry dylibs"
+        f"verified {len(required)} runtime entry dylibs; wrote {provenance_path}"
     )
 
 

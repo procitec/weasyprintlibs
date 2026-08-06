@@ -18,8 +18,10 @@ from email.parser import Parser
 from pathlib import Path
 
 try:
+    from license_bundle import verify_bundle
     from runtime_config import load_runtime_config, render_generated_module
 except ModuleNotFoundError:  # Imported as scripts.patch_weasyprint_wheel in unit tests.
+    from scripts.license_bundle import verify_bundle
     from scripts.runtime_config import load_runtime_config, render_generated_module
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,6 +106,13 @@ def copy_runtime(runtime: Path, package: Path) -> None:
         source = runtime / name
         if source.is_dir():
             shutil.copytree(source, target / name, dirs_exist_ok=True, symlinks=False)
+
+
+def copy_license_bundle(licenses: Path, dist_info: Path) -> None:
+    verify_bundle(licenses)
+    target = dist_info / "licenses"
+    shutil.rmtree(target, ignore_errors=True)
+    shutil.copytree(licenses, target)
 
 
 def bootstrap_source() -> str:
@@ -211,6 +220,7 @@ def patch_metadata(
         "bundled_version": version,
         "builder_version": builder_version,
         "platform_tag": platform_tag,
+        "license_manifest": "licenses/manifest.json",
     }
     (dist_info / "BUNDLED-RUNTIME.json").write_text(
         json.dumps(runtime_metadata, indent=2, sort_keys=True) + "\n",
@@ -247,6 +257,7 @@ def build_wheel(
     platform_tag: str,
     upstream_version: str,
     builder_version: str,
+    licenses: Path,
 ) -> Path:
     if not source.is_file():
         raise FileNotFoundError(source)
@@ -268,6 +279,7 @@ def build_wheel(
         dist_info = patch_metadata(
             unpacked, version, platform_tag, upstream_version, builder_version
         )
+        copy_license_bundle(licenses, dist_info)
         write_record(unpacked, dist_info)
 
         output = destination / output_name(version, platform_tag)
@@ -289,12 +301,14 @@ def main() -> None:
     source.add_argument("--version", help="WeasyPrint version to download from PyPI")
     parser.add_argument("--project-version", default=project_version())
     parser.add_argument("--runtime", type=Path, default=Path("_build/runtime"))
+    parser.add_argument("--licenses", type=Path, default=Path("_build/licenses"))
     parser.add_argument("--download-dir", type=Path, default=Path("downloads/weasyprint"))
     parser.add_argument("--output-dir", type=Path, default=Path("dist"))
     parser.add_argument("--platform-tag", required=True)
     args = parser.parse_args()
 
     runtime = (ROOT / args.runtime).resolve()
+    licenses = (ROOT / args.licenses).resolve()
     output_dir = (ROOT / args.output_dir).resolve()
     if args.wheel:
         wheel = args.wheel if args.wheel.is_absolute() else ROOT / args.wheel
@@ -312,6 +326,7 @@ def main() -> None:
         args.platform_tag,
         upstream_version,
         args.project_version,
+        licenses,
     )
     print(f"Created patched WeasyPrint wheel: {output}")
 
