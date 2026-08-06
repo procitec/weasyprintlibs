@@ -44,3 +44,18 @@ packages = [
     "mingw-w64-clang-aarch64-glib2",
     "mingw-w64-clang-aarch64-harfbuzz",
 ]
+
+# # Source fallbacks are used only when a staged DLL belongs to an MSYS2 binary
+# # package that does not install its own license text. They are version-bound so
+# # a package update requires an explicit license review.
+# [[windows.license_fallback]]
+# package_names = [
+#     "mingw-w64-x86_64-tcl",
+#     "mingw-w64-clang-aarch64-tcl",
+# ]
+# package_version = "8.6.18-1"
+# license_expression = "TCL"
+# source_url = "https://downloads.sourceforge.net/sourceforge/tcl/tcl8.6.18-src.tar.gz"
+# source_archive = "tcl8.6.18-src.tar.gz"
+# source_sha256 = "14f9af32b1767ff718477a8f974ad03c34341097e6b43f4ce54644ee974e268e"
+# license_files = ["license.terms"]

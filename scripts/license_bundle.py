@@ -317,6 +317,76 @@ def _read_windows_package(
     return pkginfo, licenses, runtime_files
 
 
+def _windows_license_fallback(
+    selected: dict[str, Any],
+    package_name: str,
+    package_version: str,
+) -> dict[str, Any] | None:
+    for fallback in selected.get("license_fallbacks", []):
+        names = fallback.get("package_names", [])
+        if package_name not in names:
+            continue
+        expected_version = fallback.get("package_version")
+        if expected_version != package_version:
+            raise RuntimeError(
+                f"License fallback for {package_name} is pinned to {expected_version!r}, "
+                f"but the package lock contains {package_version!r}"
+            )
+        required = (
+            "license_expression",
+            "source_url",
+            "source_archive",
+            "source_sha256",
+            "license_files",
+        )
+        missing = [field for field in required if not fallback.get(field)]
+        if missing:
+            raise RuntimeError(
+                f"License fallback for {package_name} is missing fields: {missing}"
+            )
+        return fallback
+    return None
+
+
+def _download_verified_source(
+    *,
+    root: Path,
+    cache_directory: str,
+    component: str,
+    version: str,
+    url: str,
+    archive_name: str,
+    expected_sha256: str,
+) -> Path:
+    destination = (
+        root
+        / "downloads"
+        / cache_directory
+        / f"{safe_name(component)}-{safe_name(version)}-{safe_name(archive_name)}"
+    )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.is_file() and sha256(destination) == expected_sha256:
+        return destination
+
+    temporary = destination.with_suffix(destination.suffix + ".part")
+    temporary.unlink(missing_ok=True)
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "weasyprint-bundled-builder-license-collector"},
+    )
+    print(f"Downloading license source for {component} {version}: {url}")
+    with urllib.request.urlopen(request) as response, temporary.open("wb") as output:
+        shutil.copyfileobj(response, output)
+    actual = sha256(temporary)
+    if actual != expected_sha256:
+        temporary.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"SHA-256 mismatch for source {component}: {actual} != {expected_sha256}"
+        )
+    temporary.replace(destination)
+    return destination
+
+
 def collect_windows(
     *,
     root: Path,
@@ -389,14 +459,10 @@ def collect_windows(
     for item, pkginfo, licenses, runtime_files in package_data:
         if not runtime_files:
             continue
-        if not licenses:
-            raise RuntimeError(
-                f"MSYS2 package {item['name']} contributes runtime files but no license texts"
-            )
         component_dir = output / "texts" / safe_name(item["name"])
         copied: list[str] = []
         for relative, content in sorted(licenses.items()):
-            target = component_dir / relative
+            target = component_dir / "package" / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
             copied.append(target.relative_to(output).as_posix())
@@ -405,6 +471,52 @@ def collect_windows(
         if not identifiers:
             raise RuntimeError(f"MSYS2 package {item['name']} has no declared license metadata")
         expression = " AND ".join(identifiers)
+        source: dict[str, Any] = {
+            "url": item["url"],
+            "archive": item["filename"],
+            "sha256": item["sha256"].lower(),
+            "note": "Locked MSYS2 binary package; see package metadata for source package.",
+        }
+
+        if not copied:
+            fallback = _windows_license_fallback(
+                selected,
+                item["name"],
+                item["version"],
+            )
+            if fallback is None:
+                raise RuntimeError(
+                    f"MSYS2 package {item['name']} contributes runtime files but no "
+                    "license texts and has no configured source fallback"
+                )
+            source_archive = _download_verified_source(
+                root=root,
+                cache_directory="windows-license-sources",
+                component=item["name"],
+                version=item["version"],
+                url=fallback["source_url"],
+                archive_name=fallback["source_archive"],
+                expected_sha256=fallback["source_sha256"].lower(),
+            )
+            copied_absolute = _copy_tar_license_files(
+                source_archive,
+                list(fallback["license_files"]),
+                component_dir / "source",
+            )
+            copied = [
+                Path(path).relative_to(output).as_posix() for path in copied_absolute
+            ]
+            expression = fallback["license_expression"]
+            source["license_source"] = {
+                "url": fallback["source_url"],
+                "archive": fallback["source_archive"],
+                "sha256": fallback["source_sha256"].lower(),
+                "note": (
+                    "Version-bound upstream source fallback used because the locked "
+                    "MSYS2 binary package installed no license text."
+                ),
+            }
+
         components.append(
             {
                 "name": item["name"],
@@ -413,12 +525,7 @@ def collect_windows(
                 "license_expression": expression,
                 "license_identifiers": identifiers,
                 "corresponding_source_required": is_copyleft(expression),
-                "source": {
-                    "url": item["url"],
-                    "archive": item["filename"],
-                    "sha256": item["sha256"].lower(),
-                    "note": "Locked MSYS2 binary package; see package metadata for source package.",
-                },
+                "source": source,
                 "license_files": copied,
                 "runtime_files": sorted(runtime_files),
             }
@@ -499,46 +606,6 @@ def _source_archive_license_blobs(archive_path: Path) -> dict[str, bytes]:
     return blobs
 
 
-def _download_homebrew_source(
-    *,
-    root: Path,
-    formula: str,
-    version: str,
-    url: str,
-    expected_sha256: str,
-) -> Path:
-    parsed = urllib.parse.urlparse(url)
-    url_name = Path(parsed.path).name or "source-archive"
-    destination = (
-        root
-        / "downloads"
-        / "homebrew-license-sources"
-        / f"{safe_name(formula)}-{safe_name(version)}-{safe_name(url_name)}"
-    )
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.is_file() and sha256(destination) == expected_sha256:
-        return destination
-
-    temporary = destination.with_suffix(destination.suffix + ".part")
-    temporary.unlink(missing_ok=True)
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": "weasyprint-bundled-builder-license-collector"},
-    )
-    print(f"Downloading Homebrew source for {formula} {version}: {url}")
-    with urllib.request.urlopen(request) as response, temporary.open("wb") as output:
-        shutil.copyfileobj(response, output)
-    actual = sha256(temporary)
-    if actual != expected_sha256:
-        temporary.unlink(missing_ok=True)
-        raise RuntimeError(
-            f"SHA-256 mismatch for Homebrew source {formula}: "
-            f"{actual} != {expected_sha256}"
-        )
-    temporary.replace(destination)
-    return destination
-
-
 def collect_macos(
     *,
     root: Path,
@@ -607,11 +674,14 @@ def collect_macos(
                 raise RuntimeError(f"Homebrew formula {formula} has no stable source URL")
             if not isinstance(checksum, str) or not checksum:
                 raise RuntimeError(f"Homebrew formula {formula} has no stable source checksum")
-            source_archive = _download_homebrew_source(
+            parsed = urllib.parse.urlparse(stable_url)
+            source_archive = _download_verified_source(
                 root=root,
-                formula=formula,
+                cache_directory="homebrew-license-sources",
+                component=formula,
                 version=version,
                 url=stable_url,
+                archive_name=Path(parsed.path).name or "source-archive",
                 expected_sha256=checksum,
             )
             blobs = _source_archive_license_blobs(source_archive)

@@ -7,6 +7,7 @@ from pathlib import Path
 from runtime_config import load_runtime_config
 from verify_runtime_payload import verify_payload
 from windows_config import load_windows_profile
+from windows_pe import resolve_dll_closure
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_ROOT = ROOT / "_build" / "runtime"
@@ -27,7 +28,7 @@ def main() -> None:
     parser.add_argument("--profile")
     args = parser.parse_args()
 
-    load_runtime_config()
+    runtime_config = load_runtime_config()
     profile = load_windows_profile(args.profile)
     msys_root = ROOT / profile["extract_dir"] / profile["prefix"]
     bin_source = msys_root / "bin"
@@ -42,16 +43,12 @@ def main() -> None:
     for path in (bin_destination, etc_destination, share_destination, lib_destination):
         reset(path)
 
-    dlls = sorted(bin_source.glob("*.dll"))
-    if not dlls:
+    available_dlls = sorted(bin_source.glob("*.dll"))
+    if not available_dlls:
         raise RuntimeError(f"No DLLs found in {bin_source}")
+    dlls = resolve_dll_closure(bin_source, list(runtime_config["windows"]["preload"]))
     for dll in dlls:
         shutil.copy2(dll, bin_destination / dll.name)
-
-    # pango-view is useful for diagnostics but is not required by WeasyPrint.
-    pango_view = bin_source / "pango-view.exe"
-    if pango_view.is_file():
-        shutil.copy2(pango_view, bin_destination / pango_view.name)
 
     copy_tree(msys_root / "etc" / "fonts", etc_destination / "fonts")
     copy_tree(msys_root / "share" / "fontconfig", share_destination / "fontconfig")
@@ -62,9 +59,10 @@ def main() -> None:
         "windows",
         architecture=profile["architecture"],
     )
+    omitted = len(available_dlls) - len(dlls)
     print(
         f"Staged {len(dlls)} DLLs for {profile['profile']} into {bin_destination}; "
-        f"verified {len(required)} runtime entry DLLs"
+        f"omitted {omitted} unrelated DLLs and verified {len(required)} entry DLLs"
     )
 
 

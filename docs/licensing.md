@@ -45,14 +45,30 @@ source-lock mismatch or unowned `.so` stops the build.
 
 ### Windows MSYS2 packages
 
-The Windows collector reads each locked `.pkg.tar.zst` archive. It uses the
+Windows staging does not copy every DLL from the resolved MSYS2 package set.
+It starts with the entry DLLs in `config/runtime-libraries.toml`, reads their PE
+import tables and recursively stages only MSYS2 DLL dependencies. Windows
+system DLLs are left to the operating system. Tools and unrelated libraries,
+such as Tcl/Tk pulled into the package cache by another tool, do not become
+part of the wheel merely because their package was downloaded.
+
+The license collector reads each locked `.pkg.tar.zst` archive. It uses the
 archive's `.PKGINFO` license declarations, copies files installed below
 `share/licenses` or matching license/notice names below `share/doc`, and maps
-staged DLLs back to the package archive that contained them.
+each staged DLL back to the package archive that contained it. Only packages
+that contributed a staged DLL are included.
 
-Only packages that contributed a staged DLL or executable are included. Every
-such package must contain at least one license text. The package URL and SHA-256
-from `config/windows-packages.lock.toml` are retained in the manifest.
+Some MSYS2 binary packages declare a license but do not install its text. For
+these cases, `config/windows-packages.toml` can contain a version-bound
+`[[windows.license_fallback]]`. The collector downloads the declared upstream
+source, verifies its SHA-256 checksum and copies only the configured license
+files. A package update invalidates the fallback until its version, checksum
+and license paths are reviewed. Without an installed text or a matching
+fallback, the build still fails.
+
+A general MSYS2 or MinGW-w64 license is not used as an umbrella license for
+independent projects. Each staged DLL remains associated with its own upstream
+package and license.
 
 The MSYS2 binary-package URL is not automatically a complete corresponding
 source offer. Releases containing copyleft packages must still ensure that the

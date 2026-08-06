@@ -6,6 +6,8 @@
   locked MSYS2 packages and installed Homebrew kegs.
 - Embed license texts and a runtime-to-component manifest in every patched wheel.
 - Upload matching third-party license ZIP files with CI and GitHub release artifacts.
+- Stage only the recursive Windows PE DLL dependency closure instead of every MSYS2 DLL.
+- Support version-bound upstream license fallbacks for MSYS2 packages without installed texts.
 
 ## 26.1.2
 

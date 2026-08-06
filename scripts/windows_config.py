@@ -27,6 +27,15 @@ def load_toml(path: Path) -> dict[str, Any]:
         return tomllib.load(stream)
 
 
+def _license_fallbacks(windows: dict[str, Any], path: Path) -> list[dict[str, Any]]:
+    fallbacks = windows.get("license_fallback", [])
+    if not isinstance(fallbacks, list) or not all(
+        isinstance(item, dict) for item in fallbacks
+    ):
+        raise RuntimeError(f"Invalid [[windows.license_fallback]] entries in {path}")
+    return [dict(item) for item in fallbacks]
+
+
 def load_windows_profile(
     profile_name: str | None = None,
     *,
@@ -42,6 +51,7 @@ def load_windows_profile(
     if not isinstance(profiles, dict):
         profile = dict(windows)
         profile["profile"] = profile_name or "default"
+        profile["license_fallbacks"] = _license_fallbacks(windows, path)
         return profile
 
     selected = profile_name or os.environ.get("WINDOWS_PROFILE") or windows.get("default_profile")
@@ -55,6 +65,7 @@ def load_windows_profile(
 
     profile = dict(raw_profile)
     profile["profile"] = selected
+    profile["license_fallbacks"] = _license_fallbacks(windows, path)
     missing = [field for field in REQUIRED_FIELDS if field not in profile]
     if missing:
         raise RuntimeError(f"Windows profile {selected!r} is missing fields: {missing}")
